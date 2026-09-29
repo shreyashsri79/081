@@ -5,7 +5,7 @@ import type { Fly } from '@/components/WeatherMap'
 /** What the map explorer is colouring: a forecast variable, the weights, or an extreme. */
 export type MapLayerId = VarId | 'dominant' | ExtremeId
 
-export interface Overlays { particles: boolean; isobars: boolean; cities: boolean; smooth: boolean }
+export interface Overlays { particles: boolean; isobars: boolean; cities: boolean; smooth: boolean; basemap: boolean }
 
 interface Desk {
   run: string
@@ -34,7 +34,7 @@ export const useDesk = create<Desk>((set) => ({
   member: null,
   extreme: 'rain64',
   layer: 'rain',
-  overlays: { particles: true, isobars: false, cities: true, smooth: true },
+  overlays: { particles: true, isobars: false, cities: true, smooth: true, basemap: true },
   // Open beside the map on wide screens; on a phone it would cover the map, so start closed.
   drawer: typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
   fly: null,

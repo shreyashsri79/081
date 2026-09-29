@@ -16,6 +16,7 @@ Patterns borrowed, rewritten on `motion/react` and restyled to our tokens. No li
 | Design system "Field Atlas" | SIH/167 (our own) | `src/index.css` |
 
 Data: India outline and state boundaries from datameet/maps (Survey of India boundary), simplified by `tools/make_geo.py`.
+Basemap tiles © OpenStreetMap contributors (ODbL), from tile.openstreetmap.org, loaded live and never cached for offline use (OSM tile usage policy). Without network the map falls back to plain ground plus the baked outlines.
 Neighbouring coastlines and borders from Natural Earth 1:50m (public domain); lines overlapping the Survey of India outline are removed.
 Fonts: Source Serif 4, Geist, IBM Plex Mono (SIL OFL) via Fontsource.
 Model colours: Okabe & Ito colour-blind-safe palette.

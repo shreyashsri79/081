@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { AlertTriangle, ArrowRight, CloudRain, Layers, MousePointerClick, Pause, Play, Plug, RefreshCw } from 'lucide-react'
 import MapPlate from '@/components/MapPlate'
+import WeatherMap from '@/components/WeatherMap'
 import LeadChart, { WeightStrip } from '@/components/charts/LeadChart'
 import { LineReveal, Marquee, NumberTicker, Reveal } from '@/components/motion'
 import { useExtremes, useField, useMeteogram, useRun, useScorecard, useSource, useWeights } from '@/lib/api'
@@ -29,120 +30,123 @@ function Stamp({ children = 'SYNTHETIC · ILLUSTRATIVE' }: { children?: ReactNod
 
 // ------------------------------------------------------------------ hero
 
-function HeroMap() {
+/**
+ * Full-bleed OpenStreetMap of India under the synthetic dominant-model field,
+ * wind flowing over it, Day 1 → 10 on loop. The copy sits on a glass panel.
+ */
+function Hero() {
   const reduce = useReducedMotion()
+  const wide = useMedia('(min-width: 1024px)')
   const [lead, setLead] = useState(1)
   const [playing, setPlaying] = useState(!reduce)
   const r = useRun(RUN).data
-  const ws = useWeights(RUN, HERO_VAR, lead).data
+  const wsQ = useWeights(RUN, HERO_VAR, lead).data
+  const ws = wsQ?.var === HERO_VAR ? wsQ : undefined
+  const wind = useField(RUN, 'wind', lead).data
   const mask = useMemo(() => (r ? stateIndex(r.grid) : undefined), [r])
-  const paint = useMemo(() => (ws ? dominantPaint(ws) : () => null), [ws])
+  const paint = useMemo(() => (ws ? dominantPaint(ws) : null), [ws])
   const share = useMemo(() => (ws ? dominantShare(ws, mask) : []), [ws, mask])
 
   useEffect(() => {
     if (!playing) return
-    const t = setInterval(() => setLead((L) => (L >= 10 ? 1 : L + 1)), 1300)
+    const t = setInterval(() => setLead((L) => (L >= 10 ? 1 : L + 1)), 1600)
     return () => clearInterval(t)
   }, [playing])
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="relative aspect-[0.95] max-h-[calc(100dvh-250px)] min-h-[340px] w-full">
-        {r && ws && (
-          <MapPlate grid={r.grid} paint={paint} version={`hero|${lead}`} selected={null} onSelect={() => {}}
-            readout={(k) => (
-              <div className="mt-0.5 flex flex-col gap-0.5">
-                {ws.models.map((m, a) => (
-                  <div key={m} className="flex items-center gap-1.5 text-[12px]">
-                    <span className="inline-block h-2 w-2.5" style={{ background: MODELS[m].colour }} />
-                    <span className={cn(ws.dominant[k] === a && 'font-semibold')}>{MODELS[m].short}</span>
-                    <span className="ml-auto pl-4 mono">{ws.weights[a][k].toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+    <section className="relative min-h-[660px] overflow-hidden border-b border-ink lg:h-[calc(100dvh-89px)]">
+      <div className="absolute inset-0">
+        {r && (
+          <WeatherMap
+            interactive={false}
+            grid={r.grid}
+            layer={paint ? { kind: 'paint', paint } : null}
+            layerKey={`hero|${lead}`}
+            smooth
+            wind={wind?.u ? { u: wind.u, v: wind.v! } : null}
+            particles
+            fieldOpacity={0.78}
+            outsideIndia={0.22}
+            home={wide ? { lon: 81, lat: 22.5, span: 37, ax: 0.7, ay: 0.5 } : { lon: 80.5, lat: 22.5, span: 30, ax: 0.5, ay: 0.2 }}
           />
         )}
-        <div className="absolute right-3 top-3"><Stamp /></div>
       </div>
-      <div className="grid grid-cols-[auto_1fr] items-center gap-4">
+      {/* a soft wash on the text side, so the glass panel reads on any tile */}
+      <div className="pointer-events-none absolute inset-0 to-transparent bg-gradient-to-t from-paper/60 via-paper/10 lg:bg-gradient-to-r lg:from-paper/60 lg:via-paper/15" />
+
+      <div className="relative z-10 flex h-full items-end px-4 pb-6 pt-[42vh] sm:px-8 lg:items-center lg:py-0">
+        <div className="frame raised w-full max-w-[620px] bg-surface/55 p-6 backdrop-blur-md backdrop-saturate-150 sm:p-9">
+          <Reveal><div className="label text-ink-2">SIH 2026 · PS26081 · MoES / NCMRWF</div></Reveal>
+          <h1 className="t-hero mt-5 !text-[clamp(40px,5.6vw,88px)]">
+            <LineReveal lines={['Right model,', 'right place,', <span key="w" className="italic">right weather.</span>]} />
+          </h1>
+          <Reveal delay={0.35}>
+            <p className="mt-5 max-w-[34rem] text-[16.5px] leading-relaxed text-ink-2">
+              Physics models and AI models forecast India's weather every day, and they disagree. None is best everywhere.
+              Samanvay is built to read each model's track record for every place, lead time, season and monsoon regime, and to
+              blend them into one forecast, with a map of who it trusted and why.
+            </p>
+          </Reveal>
+          <Reveal delay={0.45} className="mt-6 flex flex-wrap gap-3">
+            <Link to="/forecast" className="btn btn-ink !px-5 !py-3 !text-[15px]">Open the forecast desk <ArrowRight className="size-4" /></Link>
+            <a href="#how" className="btn btn-line !bg-surface/60 !px-5 !py-3 !text-[15px]">How it blends</a>
+          </Reveal>
+          <Reveal delay={0.55}>
+            <dl className="mt-7 grid grid-cols-3 gap-x-5 gap-y-4 border-t border-ink pt-5 sm:grid-cols-5">
+              {[
+                { v: 5, l: 'models, physics + AI' },
+                { v: 4, l: 'variables' },
+                { v: 10, l: 'lead days' },
+                { v: 64.5, d: 1, l: 'mm heavy-rain line' },
+                { v: 3, l: 'years left out, in turn' },
+              ].map((x, k) => (
+                <div key={x.l}>
+                  <dt className="sr-only">{x.l}</dt>
+                  <dd><NumberTicker value={x.v} digits={x.d ?? 0} delay={0.6 + k * 0.08} className="text-[28px] font-medium leading-none tracking-tight" /></dd>
+                  <div className="mt-1 text-[11.5px] leading-snug text-ink-2">{x.l}</div>
+                </div>
+              ))}
+            </dl>
+          </Reveal>
+        </div>
+      </div>
+
+      {/* what the backdrop is showing */}
+      <div className="absolute bottom-6 right-4 z-10 hidden w-[360px] frame raised bg-surface/70 p-3 backdrop-blur-md md:block sm:right-8">
         <div className="flex items-center gap-3">
           <button type="button" className="btn btn-line !px-2" onClick={() => setPlaying((p) => !p)} aria-label={playing ? 'Pause' : 'Play Day 1 to 10'}>
             {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
           </button>
           <div>
             <div className="label text-ink-3">Lead</div>
-            <div className="mono text-[34px] font-medium leading-none tracking-tight">D{String(lead).padStart(2, '0')}</div>
+            <div className="mono text-[26px] font-medium leading-none tracking-tight">D{String(lead).padStart(2, '0')}</div>
           </div>
+          <div className="ml-auto self-start"><Stamp /></div>
         </div>
-        <div className="flex flex-col gap-1">
-          <div className="flex h-3 w-full overflow-hidden border border-ink">
-            {share.map((s) => (
-              <motion.div key={s.model} layout transition={{ duration: 0.6, ease: [0.2, 0.7, 0.3, 1] }}
-                style={{ width: `${s.share * 100}%`, background: MODELS[s.model].colour }} />
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-x-3 text-[11.5px]">
-            {share.map((s) => (
-              <span key={s.model} className="flex items-center gap-1">
-                <span className="inline-block size-2" style={{ background: MODELS[s.model].colour }} />
-                {MODELS[s.model].short} <span className="mono text-ink-3">{Math.round(s.share * 100)}%</span>
-              </span>
-            ))}
-          </div>
+        <div className="mt-3 flex h-2.5 w-full overflow-hidden border border-ink">
+          {share.map((s) => (
+            <motion.div key={s.model} layout transition={{ duration: 0.6, ease: [0.2, 0.7, 0.3, 1] }}
+              style={{ width: `${s.share * 100}%`, background: MODELS[s.model].colour }} />
+          ))}
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-x-3 text-[11.5px]">
+          {share.map((s) => (
+            <span key={s.model} className="flex items-center gap-1">
+              <span className="inline-block size-2" style={{ background: MODELS[s.model].colour }} />
+              {MODELS[s.model].short} <span className="mono text-ink-3">{Math.round(s.share * 100)}%</span>
+            </span>
+          ))}
+        </div>
+        <p className="mt-2 text-[11.5px] leading-snug text-ink-2">
+          Most-trusted model per place for {VARS[HERO_VAR].name}, with the wind, Day 1 → 10.
+        </p>
+        <div className="mt-2 flex gap-1">
+          {Array.from({ length: 10 }, (_, k) => k + 1).map((L) => (
+            <button key={L} type="button" onClick={() => { setPlaying(false); setLead(L) }}
+              className={cn('h-1.5 flex-1', L <= lead ? 'bg-ink' : 'bg-rule-2')} aria-label={`Day ${L}`} />
+          ))}
         </div>
       </div>
-      <p className="text-[12px] text-ink-3">
-        Most-trusted model per cell for {VARS[HERO_VAR].name}, Day 1 → 10. Share = cells over India each model leads.
-      </p>
-      <div className="flex gap-1">
-        {Array.from({ length: 10 }, (_, k) => k + 1).map((L) => (
-          <button key={L} type="button" onClick={() => { setPlaying(false); setLead(L) }}
-            className={cn('h-1.5 flex-1', L <= lead ? 'bg-ink' : 'bg-rule')} aria-label={`Day ${L}`} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function Hero() {
-  return (
-    <section className="grid gap-10 px-4 pb-14 pt-10 sm:px-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-14 lg:pt-16">
-      <div className="flex flex-col justify-center gap-7">
-        <Reveal><div className="label text-ink-2">SIH 2026 · PS26081 · MoES / NCMRWF</div></Reveal>
-        <h1 className="t-hero">
-          <LineReveal lines={['Right model,', 'right place,', <span key="w" className="italic">right weather.</span>]} />
-        </h1>
-        <Reveal delay={0.35}>
-          <p className="max-w-[34rem] text-[17px] leading-relaxed text-ink-2">
-            Physics models and AI models forecast India's weather every day, and they disagree. None is best everywhere.
-            Samanvay is built to read each model's track record for every place, lead time, season and monsoon regime, and to
-            blend them into one forecast, with a map of who it trusted and why.
-          </p>
-        </Reveal>
-        <Reveal delay={0.45} className="flex flex-wrap gap-3">
-          <Link to="/forecast" className="btn btn-ink !px-5 !py-3 !text-[15px]">Open the forecast desk <ArrowRight className="size-4" /></Link>
-          <a href="#how" className="btn btn-line !px-5 !py-3 !text-[15px]">How it blends</a>
-        </Reveal>
-        <Reveal delay={0.55}>
-          <dl className="grid grid-cols-3 gap-x-6 gap-y-4 border-t border-ink pt-5 sm:grid-cols-5">
-            {[
-              { v: 5, l: 'models, physics + AI' },
-              { v: 4, l: 'variables' },
-              { v: 10, l: 'lead days' },
-              { v: 64.5, d: 1, l: 'mm heavy-rain line' },
-              { v: 3, l: 'years left out, in turn' },
-            ].map((x, k) => (
-              <div key={x.l}>
-                <dt className="sr-only">{x.l}</dt>
-                <dd><NumberTicker value={x.v} digits={x.d ?? 0} delay={0.6 + k * 0.08} className="text-[30px] font-medium leading-none tracking-tight" /></dd>
-                <div className="mt-1 text-[12px] leading-snug text-ink-3">{x.l}</div>
-              </div>
-            ))}
-          </dl>
-        </Reveal>
-      </div>
-      <Reveal delay={0.2}><HeroMap /></Reveal>
     </section>
   )
 }

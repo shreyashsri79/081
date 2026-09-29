@@ -163,7 +163,7 @@ function SourcePicker() {
 
 function OverlayToggles() {
   const { overlays, set } = useDesk()
-  const items: [keyof typeof overlays, string][] = [['particles', 'Wind flow'], ['isobars', 'Isobars'], ['cities', 'City values'], ['smooth', 'Smooth']]
+  const items: [keyof typeof overlays, string][] = [['particles', 'Wind flow'], ['isobars', 'Isobars'], ['cities', 'City values'], ['smooth', 'Smooth'], ['basemap', 'Street map']]
   return (
     <div className={cn(glass, 'pointer-events-auto flex flex-col py-1')}>
       {items.map(([k, label]) => (
@@ -317,6 +317,7 @@ export default function Forecast() {
           layer={mapLayer}
           layerKey={layerKey}
           smooth={overlays.smooth}
+          basemap={overlays.basemap}
           wind={windUV}
           particles={overlays.particles}
           isobars={overlays.isobars ? mslpF?.values ?? null : null}
@@ -341,7 +342,7 @@ export default function Forecast() {
             <div className="hidden sm:block"><OverlayToggles /></div>
           </div>
           {/* bottom: legend + days */}
-          <div className={cn('pointer-events-none absolute bottom-3 left-3 z-10 flex flex-col gap-2', drawer && cell ? 'right-3 lg:right-[452px]' : 'right-3')}>
+          <div className={cn('pointer-events-none absolute bottom-6 left-3 z-10 flex flex-col gap-2', drawer && cell ? 'right-3 lg:right-[452px]' : 'right-3')}>
             <div className="flex justify-end">{legend}</div>
             <Timeline />
           </div>

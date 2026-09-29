@@ -4,7 +4,7 @@ import { useReducedMotion } from 'motion/react'
 import type { Grid } from '@/lib/contract'
 import { sample, type Scale } from '@/lib/colour'
 import { CITIES } from '@/lib/cities'
-import { BOX, KX, OUTLINE, STATES, fmtLat, fmtLon, stateAt } from '@/lib/geo'
+import { BOX, OUTLINE, STATES, fmtLat, fmtLon, stateAt, stateIndex } from '@/lib/geo'
 import india from '@/geo/india.json'
 
 type RGB = [number, number, number]
@@ -15,12 +15,15 @@ export type MapLayer =
 
 export interface Fly { lon: number; lat: number; zoom?: number; n: number }
 
+/** Initial framing: put (lon, lat) at fraction (ax, ay) of the box, showing `span` degrees of latitude. */
+export interface Home { lon: number; lat: number; span: number; ax: number; ay: number }
+
 interface Props {
   grid: Grid
   layer: MapLayer | null
   /** Changes whenever the layer's content changes. */
   layerKey: string
-  /** Bilinear-smoothed field (Ventusky look) vs raw grid cells. Scalar layers only. */
+  /** Bilinear-smoothed field (Ventusky look) vs raw grid cells. */
   smooth?: boolean
   wind?: { u: Float32Array; v: Float32Array } | null
   particles?: boolean
@@ -29,24 +32,41 @@ interface Props {
   cities?: boolean
   /** Text shown at each city, e.g. "31°". Null shows the name only. */
   cityValue?: (k: number) => string | null
-  selected: [number, number] | null
-  onSelect: (c: [number, number]) => void
-  readout: (k: number) => ReactNode
+  selected?: [number, number] | null
+  onSelect?: (c: [number, number]) => void
+  readout?: (k: number) => ReactNode
   stamp?: string
   fly?: Fly | null
   children?: ReactNode
   className?: string
   /** Pixels to keep clear on the right (an open drawer); zoom controls move left of it. */
   rightInset?: number
+  /** OpenStreetMap tiles under the field. Falls back to plain ground when offline. */
+  basemap?: boolean
+  /** Field opacity over the basemap. */
+  fieldOpacity?: number
+  /** false: a backdrop. No pan, zoom, hover or controls. */
+  interactive?: boolean
+  home?: Home
+  /** Opacity multiplier for field and wind outside India (1 = no emphasis). */
+  outsideIndia?: number
 }
 
 // ---------------------------------------------------------------- world
+//
+// Web Mercator, so OpenStreetMap tiles line up. World units are degrees:
+// x = lon − 65, y = M(40) − M(lat), with M the Mercator ordinate in degrees.
 
-/** World units: x = (lon − 65) · cos(22.5°), y = 40 − lat. */
-const wx = (lon: number) => (lon - BOX.lon0) * KX
-const wy = (lat: number) => BOX.lat1 - lat
-const WORLD_W = (BOX.lon1 - BOX.lon0) * KX
-const WORLD_H = BOX.lat1 - BOX.lat0
+const DEG = 180 / Math.PI
+const M = (lat: number) => DEG * Math.log(Math.tan(Math.PI / 4 + lat / (2 * DEG)))
+const Minv = (m: number) => DEG * (2 * Math.atan(Math.exp(m / DEG)) - Math.PI / 2)
+const MTOP = M(BOX.lat1)
+const wx = (lon: number) => lon - BOX.lon0
+const wy = (lat: number) => MTOP - M(lat)
+const lonOf = (x: number) => x + BOX.lon0
+const latOf = (y: number) => Minv(MTOP - y)
+const WORLD_W = BOX.lon1 - BOX.lon0
+const WORLD_H = MTOP - M(BOX.lat0)
 
 function pathOf(rings: number[][][], close: boolean) {
   const p = new Path2D()
@@ -70,6 +90,34 @@ function bilinear(g: Grid, f: Float32Array, gi: number, gj: number) {
   const ti = Math.min(1, Math.max(0, gi - i0)), tj = Math.min(1, Math.max(0, gj - j0))
   const a = f[i0 * g.nx + j0], b = f[i0 * g.nx + j0 + 1], c = f[(i0 + 1) * g.nx + j0], d = f[(i0 + 1) * g.nx + j0 + 1]
   return a * (1 - ti) * (1 - tj) + b * (1 - ti) * tj + c * ti * (1 - tj) + d * ti * tj
+}
+
+/** 0 at the edge of the data, 1 once FEATHER degrees inside: the field dissolves into the basemap. */
+const FEATHER = 4
+function feather(lon: number, lat: number) {
+  const d = Math.min(lon - BOX.lon0, BOX.lon1 - lon, lat - BOX.lat0, BOX.lat1 - lat) / FEATHER
+  const t = Math.min(1, Math.max(0, d))
+  return t * t * (3 - 2 * t)
+}
+
+// ------------------------------------------------------ OpenStreetMap tiles
+
+const TILE_URL = (z: number, x: number, y: number) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
+const tiles = new Map<string, { img: HTMLImageElement; ok: boolean }>()
+const tileListeners = new Set<() => void>()
+function tile(z: number, x: number, y: number) {
+  const key = `${z}/${x}/${y}`
+  let t = tiles.get(key)
+  if (!t) {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    t = { img, ok: false }
+    tiles.set(key, t)
+    const entry = t
+    img.onload = () => { entry.ok = true; tileListeners.forEach((f) => f()) }
+    img.src = TILE_URL(z, x, y)
+  }
+  return t
 }
 
 // ------------------------------------------------------------- isobars
@@ -104,8 +152,8 @@ function isobars(g: Grid, f: Float32Array): Iso {
   }
   const centres: Iso['centres'] = []
   const R = 5
-  for (let i = R; i < g.ny - R; i += 1)
-    for (let j = R; j < g.nx - R; j += 1) {
+  for (let i = R; i < g.ny - R; i++)
+    for (let j = R; j < g.nx - R; j++) {
       const v = f[i * g.nx + j]
       let isMax = true, isMin = true, sum = 0, n = 0
       for (let di = -R; di <= R; di++)
@@ -116,8 +164,7 @@ function isobars(g: Grid, f: Float32Array): Iso {
           if (w <= v) isMin = false
           sum += w; n++
         }
-      if ((isMax || isMin) && Math.abs(v - sum / n) > 0.8)
-        centres.push({ x: X(j), y: Y(i), hi: isMax, v })
+      if ((isMax || isMin) && Math.abs(v - sum / n) > 0.8) centres.push({ x: X(j), y: Y(i), hi: isMax, v })
     }
   return { major, minor, labels, centres }
 }
@@ -125,9 +172,13 @@ function isobars(g: Grid, f: Float32Array): Iso {
 // ----------------------------------------------------------- component
 
 interface View { s: number; tx: number; ty: number }
+interface Drag { x: number; y: number; moved: boolean; pts: Map<number, [number, number]>; dist?: number }
 
 export default function WeatherMap(props: Props) {
-  const { grid, layer, layerKey, smooth = true, wind, particles, isobars: iso, cities, cityValue, selected, onSelect, readout, stamp, fly, children, className, rightInset = 0 } = props
+  const {
+    grid, layer, layerKey, smooth = true, wind, particles, isobars: iso, cities, cityValue, selected = null, onSelect, readout,
+    stamp, fly, children, className, rightInset = 0, basemap = true, fieldOpacity = 0.74, interactive = true, home, outsideIndia = 1,
+  } = props
   const box = useRef<HTMLDivElement>(null)
   const base = useRef<HTMLCanvasElement>(null)
   const flow = useRef<HTMLCanvasElement>(null)
@@ -135,13 +186,28 @@ export default function WeatherMap(props: Props) {
   const [view, setView] = useState<View | null>(null)
   const touched = useRef(false)
   const [hover, setHover] = useState<{ k: number; x: number; y: number } | null>(null)
+  const [tileTick, setTileTick] = useState(0)
   const reduce = useReducedMotion()
 
+  // Redraw when a tile arrives, batched to one frame.
+  useEffect(() => {
+    let raf = 0
+    const on = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; setTileTick((t) => t + 1) }) }
+    tileListeners.add(on)
+    return () => { tileListeners.delete(on); cancelAnimationFrame(raf) }
+  }, [])
+
   // ---- size and fit
+  const homeKey = home ? `${home.lon},${home.lat},${home.span},${home.ax},${home.ay}` : ''
   const fitView = useCallback((w: number, h: number): View => {
+    if (home) {
+      const s = h / (M(home.lat + home.span / 2) - M(home.lat - home.span / 2))
+      return { s, tx: home.ax * w - wx(home.lon) * s, ty: home.ay * h - wy(home.lat) * s }
+    }
     const s = Math.min(w / WORLD_W, h / WORLD_H) * 0.96
     return { s, tx: (w - WORLD_W * s) / 2, ty: (h - WORLD_H * s) / 2 }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeKey])
   useEffect(() => {
     const el = box.current
     if (!el) return
@@ -156,8 +222,7 @@ export default function WeatherMap(props: Props) {
   const s0 = size.w ? Math.min(size.w / WORLD_W, size.h / WORLD_H) * 0.96 : 1
 
   const clampView = useCallback((v: View): View => {
-    const s = Math.min(s0 * 10, Math.max(s0 * 0.8, v.s))
-    // keep the domain centre-ish reachable: its box must overlap the viewport
+    const s = Math.min(s0 * 12, Math.max(s0 * 0.8, v.s))
     const minTx = size.w * 0.5 - WORLD_W * s, maxTx = size.w * 0.5
     const minTy = size.h * 0.5 - WORLD_H * s, maxTy = size.h * 0.5
     return { s, tx: Math.min(maxTx, Math.max(minTx, v.tx)), ty: Math.min(maxTy, Math.max(minTy, v.ty)) }
@@ -167,7 +232,7 @@ export default function WeatherMap(props: Props) {
     touched.current = true
     setView((v) => {
       if (!v) return v
-      const s = Math.min(s0 * 10, Math.max(s0 * 0.8, v.s * f))
+      const s = Math.min(s0 * 12, Math.max(s0 * 0.8, v.s * f))
       const k = s / v.s
       return clampView({ s, tx: px - (px - v.tx) * k, ty: py - (py - v.ty) * k })
     })
@@ -193,44 +258,58 @@ export default function WeatherMap(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fly?.n])
 
-  // ---- field image (rebuilt only when the layer changes)
+  // ---- field image, resampled onto Mercator rows (rebuilt only when the data changes)
+  // Per-cell weight: 1 inside India, `outsideIndia` elsewhere (interpolated, so the step is soft).
+  const emphasis = useMemo(() => {
+    const idx = stateIndex(grid)
+    const e = new Float32Array(idx.length)
+    for (let k = 0; k < idx.length; k++) e[k] = idx[k] >= 0 ? 1 : outsideIndia
+    return e
+  }, [grid, outsideIndia])
+
   const image = useMemo(() => {
     if (!layer) return null
-    const c = document.createElement('canvas')
+    // Scalars smooth by interpolating values. Paint layers are categorical, so
+    // they are sampled per cell and softened by the browser's image smoothing.
     const smoothOn = smooth && layer.kind === 'scalar'
-    if (smoothOn) {
-      const U = 4
-      const iw = (grid.nx - 1) * U + 1, ih = (grid.ny - 1) * U + 1
-      c.width = iw; c.height = ih
-      const ctx = c.getContext('2d')!
-      const img = ctx.createImageData(iw, ih)
-      for (let py = 0; py < ih; py++)
-        for (let px = 0; px < iw; px++) {
-          const rgb = sample(layer.scale, bilinear(grid, layer.values, (ih - 1 - py) / U, px / U))
-          const o = (py * iw + px) * 4
-          img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = 255
-        }
-      ctx.putImageData(img, 0, 0)
-      return { c, smooth: true, x0: wx(grid.lon0), y0: wy(grid.lat0 + (grid.ny - 1) * grid.step), w: (grid.nx - 1) * grid.step * KX, h: (grid.ny - 1) * grid.step }
-    }
-    c.width = grid.nx; c.height = grid.ny
+    const softPaint = smooth && layer.kind === 'paint'
+    const h = smoothOn ? 0 : grid.step / 2
+    const lonA = grid.lon0 - h, lonB = grid.lon0 + (grid.nx - 1) * grid.step + h
+    const latA = grid.lat0 - h, latB = grid.lat0 + (grid.ny - 1) * grid.step + h
+    const U = softPaint ? 1 : 4
+    const iw = smoothOn ? (grid.nx - 1) * U + 1 : grid.nx * U
+    const ih = smoothOn ? (grid.ny - 1) * U + 1 : grid.ny * (softPaint ? 2 : U)
+    const mA = M(latA), mB = M(latB)
+    const c = document.createElement('canvas')
+    c.width = iw; c.height = ih
     const ctx = c.getContext('2d')!
-    const img = ctx.createImageData(grid.nx, grid.ny)
-    for (let i = 0; i < grid.ny; i++)
-      for (let j = 0; j < grid.nx; j++) {
-        const k = i * grid.nx + j
-        const rgb = layer.kind === 'scalar' ? sample(layer.scale, layer.values[k]) : layer.paint(k)
+    const img = ctx.createImageData(iw, ih)
+    const colour = (k: number, gi: number, gj: number): RGB | null =>
+      layer.kind === 'scalar'
+        ? sample(layer.scale, smoothOn ? bilinear(grid, layer.values, gi, gj) : layer.values[k])
+        : layer.paint(k)
+    for (let py = 0; py < ih; py++) {
+      const lat = Minv(mB - ((py + (smoothOn ? 0 : 0.5)) / (smoothOn ? ih - 1 : ih)) * (mB - mA))
+      const gi = (lat - grid.lat0) / grid.step
+      const ri = Math.max(0, Math.min(grid.ny - 1, Math.round(gi)))
+      for (let px = 0; px < iw; px++) {
+        const lon = smoothOn ? lonA + (px / (iw - 1)) * (lonB - lonA) : lonA + ((px + 0.5) / iw) * (lonB - lonA)
+        const gj = (lon - grid.lon0) / grid.step
+        const rj = Math.max(0, Math.min(grid.nx - 1, Math.round(gj)))
+        // paint layers are categorical: nearest cell, even when drawn smooth
+        const rgb = colour(ri * grid.nx + rj, gi, gj)
         if (!rgb) continue
-        const o = ((grid.ny - 1 - i) * grid.nx + j) * 4
-        img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = 255
+        const o = (py * iw + px) * 4
+        const a = basemap ? feather(lon, lat) * (outsideIndia < 1 ? bilinear(grid, emphasis, gi, gj) : 1) : 1
+        img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = Math.round(255 * a)
       }
+    }
     ctx.putImageData(img, 0, 0)
-    const h = grid.step / 2
-    return { c, smooth: false, x0: wx(grid.lon0 - h), y0: wy(grid.lat0 + (grid.ny - 1) * grid.step + h), w: grid.nx * grid.step * KX, h: grid.ny * grid.step }
+    return { c, smooth: smoothOn || softPaint, x0: wx(lonA), y0: wy(latB), w: lonB - lonA, h: mB - mA }
     // Keyed on the data itself, not only the key: a placeholder field kept while
     // the next one loads must never be painted with the next layer's scale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layerKey, smooth, grid, layer && (layer.kind === 'scalar' ? layer.values : layer.paint), layer && layer.kind === 'scalar' && layer.scale])
+  }, [layerKey, smooth, grid, layer && (layer.kind === 'scalar' ? layer.values : layer.paint), layer && layer.kind === 'scalar' && layer.scale, basemap, emphasis])
 
   const isoData = useMemo(() => (iso ? isobars(grid, iso) : null), [iso, grid])
 
@@ -245,19 +324,46 @@ export default function WeatherMap(props: Props) {
     ctx.fillStyle = '#e4e2de'
     ctx.fillRect(0, 0, size.w, size.h)
 
+    // OpenStreetMap basemap, desaturated so the forecast colours lead
+    let tilesDrawn = 0
+    if (basemap) {
+      const z = Math.max(2, Math.min(12, Math.ceil(Math.log2((360 * view.s * dpr) / 256))))
+      const n = 2 ** z, span = 360 / n
+      const xA = Math.floor(((lonOf(-view.tx / view.s) + 180) / 360) * n)
+      const xB = Math.floor(((lonOf((size.w - view.tx) / view.s) + 180) / 360) * n)
+      const mT = MTOP - (-view.ty / view.s), mBt = MTOP - (size.h - view.ty) / view.s
+      const yA = Math.max(0, Math.floor(((1 - mT / 180) / 2) * n)), yB = Math.min(n - 1, Math.floor(((1 - mBt / 180) / 2) * n))
+      ctx.save()
+      ctx.filter = 'saturate(0.45) contrast(0.92) brightness(1.03)'
+      for (let ty = yA; ty <= yB; ty++)
+        for (let tx = xA; tx <= xB; tx++) {
+          const t = tile(z, ((tx % n) + n) % n, ty)
+          if (!t.ok) continue
+          const x = (tx * span - 180 - BOX.lon0) * view.s + view.tx
+          const y = (MTOP - 180 * (1 - (2 * ty) / n)) * view.s + view.ty
+          ctx.drawImage(t.img, x, y, span * view.s + 0.5, span * view.s + 0.5)
+          tilesDrawn++
+        }
+      ctx.restore()
+    }
+
     const P = paths()
     ctx.save()
     ctx.setTransform(dpr * view.s, 0, 0, dpr * view.s, dpr * view.tx, dpr * view.ty)
     const px = 1 / view.s
     if (image) {
+      ctx.globalAlpha = basemap && tilesDrawn ? fieldOpacity : 1
       ctx.imageSmoothingEnabled = image.smooth
       ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(image.c, image.x0, image.y0, image.w, image.h)
+      ctx.globalAlpha = 1
     }
     ctx.lineJoin = 'round'
-    ctx.strokeStyle = 'rgba(14,33,41,0.55)'; ctx.lineWidth = 0.8 * px; ctx.stroke(P.neighbours)
+    if (!tilesDrawn) { ctx.strokeStyle = 'rgba(14,33,41,0.55)'; ctx.lineWidth = 0.8 * px; ctx.stroke(P.neighbours) }
     ctx.strokeStyle = 'rgba(14,33,41,0.32)'; ctx.lineWidth = 0.6 * px; ctx.stroke(P.states)
-    ctx.strokeStyle = '#0e2129'; ctx.lineWidth = 1.2 * px; ctx.stroke(P.outline)
+    // Survey of India boundary, always on top of any basemap
+    ctx.strokeStyle = 'rgba(248,247,245,0.8)'; ctx.lineWidth = 3 * px; ctx.stroke(P.outline)
+    ctx.strokeStyle = '#0e2129'; ctx.lineWidth = 1.3 * px; ctx.stroke(P.outline)
     if (isoData) {
       ctx.strokeStyle = 'rgba(14,33,41,0.75)'; ctx.lineWidth = 1.1 * px; ctx.stroke(isoData.major)
       ctx.strokeStyle = 'rgba(14,33,41,0.45)'; ctx.lineWidth = 0.7 * px; ctx.stroke(isoData.minor)
@@ -272,8 +378,8 @@ export default function WeatherMap(props: Props) {
           if (sp < 0.5) continue
           const x = wx(grid.lon0 + j * grid.step), y = wy(grid.lat0 + i * grid.step), L = (8 + sp) * px
           const ex = x + (u / sp) * L, ey = y - (v / sp) * L
-          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey)
           const a = Math.atan2(-(v / sp), u / sp)
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey)
           ctx.lineTo(ex - Math.cos(a - 0.5) * 4 * px, ey - Math.sin(a - 0.5) * 4 * px)
           ctx.moveTo(ex, ey); ctx.lineTo(ex - Math.cos(a + 0.5) * 4 * px, ey - Math.sin(a + 0.5) * 4 * px)
           ctx.stroke()
@@ -295,25 +401,29 @@ export default function WeatherMap(props: Props) {
       }
     }
 
-    // domain edge: data ends here
-    ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(14,33,41,0.35)'; ctx.lineWidth = 1
-    const [dx0, dy0] = S(0, 0), [dx1, dy1] = S(WORLD_W, WORLD_H)
-    ctx.strokeRect(dx0, dy0, dx1 - dx0, dy1 - dy0)
-    ctx.setLineDash([])
+    // domain edge: on plain ground a dashed box says where data ends; over the
+    // street map the field is feathered out instead, so no hard rectangle.
+    if (!(basemap && tilesDrawn)) {
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(14,33,41,0.4)'; ctx.lineWidth = 1
+      const [dx0, dy0] = S(0, 0), [dx1, dy1] = S(WORLD_W, WORLD_H)
+      ctx.strokeRect(dx0, dy0, dx1 - dx0, dy1 - dy0)
+      ctx.setLineDash([])
+    }
 
     if (cities) {
-      const z = view.s / s0
+      const zr = view.s / s0
       const placed: [number, number, number, number][] = []
       for (const c of CITIES) {
-        if (c.rank === 2 && z < 1.35) continue
-        if (c.rank === 3 && z < 2.2) continue
+        if (c.rank === 2 && zr < 1.35) continue
+        if (c.rank === 3 && zr < 2.2) continue
         const [x, y] = S(wx(c.lon), wy(c.lat))
         if (x < -40 || y < -20 || x > size.w + 40 || y > size.h + 20) continue
         const i = Math.round((c.lat - grid.lat0) / grid.step), j = Math.round((c.lon - grid.lon0) / grid.step)
         const inside = i >= 0 && i < grid.ny && j >= 0 && j < grid.nx
         const val = inside && cityValue ? cityValue(i * grid.nx + j) : null
         const bw = val ? Math.max(30, val.length * 7.4 + 10) : 0
-        const bb: [number, number, number, number] = [x - Math.max(bw, c.name.length * 6) / 2, y - 11, x + Math.max(bw, c.name.length * 6) / 2, y + 22]
+        const half = Math.max(bw, c.name.length * 6) / 2
+        const bb: [number, number, number, number] = [x - half, y - 11, x + half, y + 22]
         if (placed.some((p) => !(bb[2] < p[0] || bb[0] > p[2] || bb[3] < p[1] || bb[1] > p[3]))) continue
         placed.push(bb)
         if (val) {
@@ -334,7 +444,7 @@ export default function WeatherMap(props: Props) {
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 7, y - 13); ctx.arc(x, y - 17, 8, Math.PI * 0.8, Math.PI * 0.2); ctx.closePath(); ctx.fill()
       ctx.fillStyle = '#f8f7f5'; ctx.beginPath(); ctx.arc(x, y - 17, 3, 0, Math.PI * 2); ctx.fill()
     }
-  }, [view, size, image, isoData, cities, cityValue, selected, grid, s0, wind, particles, reduce])
+  }, [view, size, image, isoData, cities, cityValue, selected, grid, s0, wind, particles, reduce, basemap, fieldOpacity, tileTick])
 
   // ---- wind particles (Ventusky / earth.nullschool style)
   useEffect(() => {
@@ -347,52 +457,55 @@ export default function WeatherMap(props: Props) {
     ctx.clearRect(0, 0, size.w, size.h)
     if (!wind || !particles || reduce) return
 
-    // visible part of the domain, in lon/lat
-    const lonA = Math.max(BOX.lon0, (0 - view.tx) / view.s / KX + BOX.lon0), lonB = Math.min(BOX.lon1, (size.w - view.tx) / view.s / KX + BOX.lon0)
-    const latB = Math.min(BOX.lat1, BOX.lat1 - (0 - view.ty) / view.s), latA = Math.max(BOX.lat0, BOX.lat1 - (size.h - view.ty) / view.s)
+    const lonA = Math.max(BOX.lon0, lonOf(-view.tx / view.s)), lonB = Math.min(BOX.lon1, lonOf((size.w - view.tx) / view.s))
+    const latB = Math.min(BOX.lat1, latOf(-view.ty / view.s)), latA = Math.max(BOX.lat0, latOf((size.h - view.ty) / view.s))
     if (lonB <= lonA || latB <= latA) return
-    const areaPx = (lonB - lonA) * KX * view.s * (latB - latA) * view.s
-    const N = Math.round(Math.min(4500, Math.max(600, areaPx / 180)))
+    const areaPx = (lonB - lonA) * view.s * (M(latB) - M(latA)) * view.s
+    const N = Math.round(Math.min(5000, Math.max(600, areaPx / 170)))
     const lon = new Float32Array(N), lat = new Float32Array(N), age = new Uint16Array(N)
     const spawn = (k: number) => { lon[k] = lonA + Math.random() * (lonB - lonA); lat[k] = latA + Math.random() * (latB - latA); age[k] = Math.floor(Math.random() * 80) }
     for (let k = 0; k < N; k++) spawn(k)
-    const K = 0.34 / view.s // world units moved per frame per m/s (screen-constant speed)
+    const K = 0.34 / view.s // world units per frame per m/s: constant speed on screen
     let raf = 0
     const frame = () => {
       ctx.globalCompositeOperation = 'destination-in'
       ctx.fillStyle = 'rgba(0,0,0,0.93)'; ctx.fillRect(0, 0, size.w, size.h)
       ctx.globalCompositeOperation = 'source-over'
-      ctx.strokeStyle = 'rgba(14,33,41,0.7)'; ctx.lineWidth = 1.15
-      ctx.beginPath()
+      ctx.lineWidth = 1.15
+      // four alpha buckets: particles fade toward the data edge (and outside India when emphasised)
+      const buckets = [new Path2D(), new Path2D(), new Path2D(), new Path2D()]
       for (let k = 0; k < N; k++) {
         const gi = (lat[k] - grid.lat0) / grid.step, gj = (lon[k] - grid.lon0) / grid.step
         if (gi < 0 || gj < 0 || gi > grid.ny - 1 || gj > grid.nx - 1 || ++age[k] > 110) { spawn(k); continue }
         const u = bilinear(grid, wind.u, gi, gj), v = bilinear(grid, wind.v, gi, gj)
         const x0 = wx(lon[k]) * view.s + view.tx, y0 = wy(lat[k]) * view.s + view.ty
-        lon[k] += (u * K) / KX
-        lat[k] += v * K
+        lon[k] += u * K
+        lat[k] += v * K * Math.cos(lat[k] / DEG) // Mercator stretch
         const x1 = wx(lon[k]) * view.s + view.tx, y1 = wy(lat[k]) * view.s + view.ty
-        ctx.moveTo(x0, y0); ctx.lineTo(x1, y1)
+        let a = basemap ? feather(lon[k], lat[k]) : 1
+        if (outsideIndia < 1) a *= emphasis[Math.round(gi) * grid.nx + Math.round(gj)]
+        if (a < 0.08) continue
+        const p = buckets[Math.min(3, Math.floor(a * 4))]
+        p.moveTo(x0, y0); p.lineTo(x1, y1)
       }
-      ctx.stroke()
+      buckets.forEach((p, b) => { ctx.strokeStyle = `rgba(14,33,41,${(0.7 * (b + 1)) / 4})`; ctx.stroke(p) })
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(raf)
-  }, [wind, particles, reduce, view, size, grid])
+  }, [wind, particles, reduce, view, size, grid, basemap, emphasis, outsideIndia])
 
   // ---- pointer interaction: drag to pan, wheel / pinch to zoom, click to select
-interface Drag { x: number; y: number; moved: boolean; pts: Map<number, [number, number]>; dist?: number }
   const drag = useRef<Drag | null>(null)
   const toCell = (x: number, y: number): [number, number] | null => {
     if (!view) return null
-    const lon = (x - view.tx) / view.s / KX + BOX.lon0, lat = BOX.lat1 - (y - view.ty) / view.s
+    const lon = lonOf((x - view.tx) / view.s), lat = latOf((y - view.ty) / view.s)
     const i = Math.round((lat - grid.lat0) / grid.step), j = Math.round((lon - grid.lon0) / grid.step)
     return i >= 0 && i < grid.ny && j >= 0 && j < grid.nx ? [i, j] : null
   }
   useEffect(() => {
     const el = box.current
-    if (!el) return
+    if (!el || !interactive) return
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const r = el.getBoundingClientRect()
@@ -400,7 +513,7 @@ interface Drag { x: number; y: number; moved: boolean; pts: Map<number, [number,
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [zoomAt])
+  }, [zoomAt, interactive])
 
   const onDown = (e: React.PointerEvent) => {
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -414,7 +527,7 @@ interface Drag { x: number; y: number; moved: boolean; pts: Map<number, [number,
     const x = e.clientX - r.left, y = e.clientY - r.top
     const d = drag.current
     if (!d) {
-      const c = toCell(x, y)
+      const c = readout ? toCell(x, y) : null
       setHover(c ? { k: c[0] * grid.nx + c[1], x, y } : null)
       return
     }
@@ -441,7 +554,7 @@ interface Drag { x: number; y: number; moved: boolean; pts: Map<number, [number,
     if (!d) return
     d.pts.delete(e.pointerId)
     if (d.pts.size > 0) return
-    if (!d.moved) {
+    if (!d.moved && onSelect) {
       const r = e.currentTarget.getBoundingClientRect()
       const c = toCell(e.clientX - r.left, e.clientY - r.top)
       if (c) onSelect(c)
@@ -451,39 +564,46 @@ interface Drag { x: number; y: number; moved: boolean; pts: Map<number, [number,
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === '+' || e.key === '=') return zoomAt(1.3, size.w / 2, size.h / 2)
     if (e.key === '-') return zoomAt(1 / 1.3, size.w / 2, size.h / 2)
-    if (!selected) return
+    if (!selected || !onSelect) return
     const m = ({ ArrowUp: [1, 0], ArrowDown: [-1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] } as Record<string, [number, number]>)[e.key]
     if (!m) return
     e.preventDefault()
     onSelect([Math.min(grid.ny - 1, Math.max(0, selected[0] + m[0])), Math.min(grid.nx - 1, Math.max(0, selected[1] + m[1]))])
   }
 
-  const hi = hover && Math.floor(hover.k / grid.nx), hj = hover && hover.k % grid.nx
-  const hlat = hover ? grid.lat0 + hi! * grid.step : 0, hlon = hover ? grid.lon0 + hj! * grid.step : 0
+  const hi = hover ? Math.floor(hover.k / grid.nx) : 0, hj = hover ? hover.k % grid.nx : 0
+  const hlat = grid.lat0 + hi * grid.step, hlon = grid.lon0 + hj * grid.step
   const hs = hover ? stateAt(hlon, hlat) : -1
 
   return (
     <div className={`relative h-full w-full overflow-hidden bg-surface-2 ${className ?? ''}`}>
-      <div
-        ref={box}
-        className="absolute inset-0 touch-none select-none outline-none"
-        style={{ cursor: drag.current?.moved ? 'grabbing' : 'crosshair' }}
-        tabIndex={0}
-        role="application"
-        aria-label="Forecast map of India. Drag to pan, scroll to zoom, click to pick a point; arrow keys move the point, + and − zoom."
-        onPointerDown={onDown}
-        onPointerMove={onMove}
-        onPointerUp={onUp}
-        onPointerCancel={onUp}
-        onPointerLeave={() => setHover(null)}
-        onKeyDown={onKey}
-        onDoubleClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); zoomAt(1.8, e.clientX - r.left, e.clientY - r.top) }}
-      >
-        <canvas ref={base} className="absolute inset-0 h-full w-full" />
-        <canvas ref={flow} className="pointer-events-none absolute inset-0 h-full w-full" />
-      </div>
+      {interactive ? (
+        <div
+          ref={box}
+          className="absolute inset-0 touch-none select-none outline-none"
+          style={{ cursor: 'crosshair' }}
+          tabIndex={0}
+          role="application"
+          aria-label="Forecast map of India. Drag to pan, scroll to zoom, click to pick a point; arrow keys move the point, + and − zoom."
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
+          onPointerLeave={() => setHover(null)}
+          onKeyDown={onKey}
+          onDoubleClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); zoomAt(1.8, e.clientX - r.left, e.clientY - r.top) }}
+        >
+          <canvas ref={base} className="absolute inset-0 h-full w-full" />
+          <canvas ref={flow} className="pointer-events-none absolute inset-0 h-full w-full" />
+        </div>
+      ) : (
+        <div ref={box} className="pointer-events-none absolute inset-0" aria-hidden>
+          <canvas ref={base} className="absolute inset-0 h-full w-full" />
+          <canvas ref={flow} className="absolute inset-0 h-full w-full" />
+        </div>
+      )}
 
-      {hover && (
+      {hover && readout && (
         <div className="pointer-events-none absolute z-20 frame raised bg-surface px-2.5 py-1.5 text-[12px]"
           style={{ left: Math.min(hover.x + 16, size.w - 200), top: Math.max(8, hover.y - 64) }}>
           <div className="mono text-[11px] text-ink-3">
@@ -495,16 +615,24 @@ interface Drag { x: number; y: number; moved: boolean; pts: Map<number, [number,
       )}
 
       {stamp && (
-        <div className="pointer-events-none absolute bottom-[84px] left-3 z-10 hidden border md:block border-bad bg-surface/90 px-2 py-0.5 mono text-[10.5px] font-medium tracking-wider text-bad">
+        <div className="pointer-events-none absolute bottom-[100px] left-3 z-10 hidden border border-bad bg-surface/90 px-2 py-0.5 mono text-[10.5px] font-medium tracking-wider text-bad md:block">
           {stamp}
         </div>
       )}
 
-      <div className="absolute top-1/2 z-10 flex -translate-y-1/2 flex-col frame bg-surface raised transition-[right] duration-200" style={{ right: 12 + rightInset }}>
-        <button type="button" className="grid size-8 place-items-center hover:bg-surface-2" onClick={() => zoomAt(1.4, size.w / 2, size.h / 2)} aria-label="Zoom in"><Plus className="size-4" /></button>
-        <button type="button" className="grid size-8 place-items-center border-y border-rule hover:bg-surface-2" onClick={() => zoomAt(1 / 1.4, size.w / 2, size.h / 2)} aria-label="Zoom out"><Minus className="size-4" /></button>
-        <button type="button" className="grid size-8 place-items-center hover:bg-surface-2" onClick={() => { touched.current = false; setView(fitView(size.w, size.h)) }} aria-label="Show all of India"><Scan className="size-4" /></button>
-      </div>
+      {interactive && (
+        <div className="absolute top-1/2 z-10 flex -translate-y-1/2 flex-col frame bg-surface raised transition-[right] duration-200" style={{ right: 12 + rightInset }}>
+          <button type="button" className="grid size-8 place-items-center hover:bg-surface-2" onClick={() => zoomAt(1.4, size.w / 2, size.h / 2)} aria-label="Zoom in"><Plus className="size-4" /></button>
+          <button type="button" className="grid size-8 place-items-center border-y border-rule hover:bg-surface-2" onClick={() => zoomAt(1 / 1.4, size.w / 2, size.h / 2)} aria-label="Zoom out"><Minus className="size-4" /></button>
+          <button type="button" className="grid size-8 place-items-center hover:bg-surface-2" onClick={() => { touched.current = false; setView(fitView(size.w, size.h)) }} aria-label="Show all of India"><Scan className="size-4" /></button>
+        </div>
+      )}
+
+      {basemap && (
+        <div className="absolute bottom-0 z-10 bg-surface/85 px-1.5 py-0.5 text-[10.5px] leading-tight text-ink-2" style={{ right: rightInset }}>
+          ©{' '}<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="pointer-events-auto underline hover:text-ink">OpenStreetMap</a> contributors
+        </div>
+      )}
 
       {children}
     </div>
