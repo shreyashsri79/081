@@ -320,7 +320,7 @@ def event_probs(fc: xr.DataArray, obs: xr.DataArray, p: dict, date, ui: str) -> 
         tau = X.model_thresholds(fc_tr, base)
 
         def prob(f):
-            votes = (f >= tau).where(f.notnull())
+            votes = (f >= tau).where(f.notnull() & tau.notnull())   # no truth here: no probability
             return (votes * p["w_B2c"]).sum("model", skipna=False).transpose("init", "lead", ...)
 
         ev_tr = (obs_tr >= thr).where(obs_tr.notnull()).transpose("init", "lead", ...)
