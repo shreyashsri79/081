@@ -133,9 +133,12 @@ def truth(days: pd.DatetimeIndex, seed: int) -> dict[str, np.ndarray]:
     return out
 
 
-# model personalities: (Day-1 error scale, growth per day, share of error common to the AI models)
-SKILL = {"hres": (1.0, 0.30, 0.0), "graphcast": (0.84, 0.29, 0.6), "pangu": (0.95, 0.31, 0.6),
-         "fuxi": (1.02, 0.24, 0.6), "gencast": (1.08, 0.20, 0.6)}
+# model personalities: (Day-1 error scale, growth per day, extra error share common to the AI models).
+# Every model also shares COMMON of its error with all others: real models miss the same unpredictable weather,
+# which is why measured blend gains are ~5-10 % (TASK.md), not the 30 % independent errors would give.
+COMMON = 0.8
+SKILL = {"hres": (1.0, 0.30, 0.0), "graphcast": (0.84, 0.29, 0.5), "pangu": (0.95, 0.31, 0.5),
+         "fuxi": (1.02, 0.24, 0.5), "gencast": (1.08, 0.20, 0.5)}
 BIAS = {"hres": {C.RAIN: 1.2, C.T2M: -0.4, C.WIND: 0.2, C.MSLP: 30},
         "graphcast": {C.RAIN: -2.1, C.T2M: 0.3, C.WIND: -0.3, C.MSLP: -20},
         "pangu": {C.RAIN: 0.0, C.T2M: 0.6, C.WIND: -0.5, C.MSLP: 40},
@@ -156,8 +159,9 @@ def forecasts(tr: dict, days: pd.DatetimeIndex, year: int, models, seed: int) ->
     pos = {d: i for i, d in enumerate(days)}
     leads = C.LEAD_DAYS
     out = {}
-    shared = {v: smooth_noise(np.random.default_rng(seed + 7), len(inits) * len(leads)).reshape(len(inits), len(leads), len(LAT), len(LON))
-              for v in ERR}
+    shape = (len(inits), len(leads), len(LAT), len(LON))
+    common = {v: smooth_noise(np.random.default_rng(seed + 3), len(inits) * len(leads)).reshape(shape) for v in ERR}
+    shared = {v: smooth_noise(np.random.default_rng(seed + 7), len(inits) * len(leads)).reshape(shape) for v in ERR}
     for mi, m in enumerate(models):
         rng = np.random.default_rng(seed + 100 * (mi + 1))
         a, b, share = SKILL[m]
@@ -167,7 +171,8 @@ def forecasts(tr: dict, days: pd.DatetimeIndex, year: int, models, seed: int) ->
             if v == C.RAIN and m == "pangu":
                 continue   # no precipitation, as in WeatherBench 2
             own = smooth_noise(rng, len(inits) * len(leads)).reshape(len(inits), len(leads), len(LAT), len(LON))
-            noise = np.sqrt(share) * shared[v] + np.sqrt(1 - share) * own if share else own
+            own = np.sqrt(share) * shared[v] + np.sqrt(1 - share) * own if share else own
+            noise = np.sqrt(COMMON) * common[v] + np.sqrt(1 - COMMON) * own
             valid = np.array([[pos[d + pd.Timedelta(days=int(L))] for L in leads] for d in inits])
             base = tr[v][valid]                                           # (init, lead, lat, lon)
             scale = ERR[v] * (a + b * (leads - 1))[None, :, None, None] * place

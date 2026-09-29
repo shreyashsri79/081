@@ -69,52 +69,52 @@
   "label": "Monsoon normal",
   "basis": "init"
  },
- "rung": "B3c",
+ "rung": "B2c",
  "steps": [
   {
    "name": "fit rain on S4, fold m06 held out",
    "status": "ok",
-   "seconds": 5.43
+   "seconds": 2.06
   },
   {
-   "name": "blend rain (B3c) + extremes",
+   "name": "blend rain (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.04
+   "seconds": 0.37
   },
   {
    "name": "fit t2m on S3, fold m06 held out",
    "status": "ok",
-   "seconds": 6.87
+   "seconds": 2.92
   },
   {
-   "name": "blend t2m (B3c) + extremes",
+   "name": "blend t2m (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.02
+   "seconds": 0.28
   },
   {
    "name": "fit wind on S3, fold m06 held out",
    "status": "ok",
-   "seconds": 5.89
+   "seconds": 2.55
   },
   {
-   "name": "blend wind (B3c) + extremes",
+   "name": "blend wind (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.02
+   "seconds": 0.31
   },
   {
    "name": "fit mslp on S3, fold m06 held out",
    "status": "ok",
-   "seconds": 5.15
+   "seconds": 2.65
   },
   {
-   "name": "blend mslp (B3c) + extremes",
+   "name": "blend mslp (B2c) + extremes",
    "status": "ok",
    "seconds": 0.01
   },
   {
    "name": "write bundle",
    "status": "ok",
-   "seconds": 0.07
+   "seconds": 0.03
   }
  ],
  "provenance": "synthetic",
@@ -122,10 +122,77 @@
   "DEMO BUNDLE: generated data in the engine's exact format, not WeatherBench 2 forecasts. It shows how the dashboard works; replace with bundles from run_all.py --export-runs before quoting any number.",
   "Rain truth: CHIRPS 2.0, block mean to the model grid, land only: rain is scored and weighted over land; sea cells are blank. T2m, wind and MSLP truth: ERA5.",
   "Weights for this date are fitted without its month 06 \u00b110 days (out-of-sample).",
-  "Rung per variable: rain B3c, t2m B3c, wind B3c, mslp B3c.",
+  "Rung per variable: rain B2c, t2m B2c, wind B2c, mslp B2c.",
   "Grid 1.5\u00b0 (~166 km); values are cell averages.",
   "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value.",
   "Wind particles: u/v members blended with the wind-speed weights (direction only, no bias correction)."
+ ],
+ "extremes": [
+  {
+   "id": "rain_p95",
+   "var": "rain",
+   "name": "Heavy rain (top 5 %)",
+   "short": "Heavy \u00b7 top 5 %",
+   "threshold": "24 h rain above the cell's 95th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "rain_p99",
+   "var": "rain",
+   "name": "Very heavy rain (top 1 %)",
+   "short": "Very heavy \u00b7 top 1 %",
+   "threshold": "24 h rain above the cell's 99th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "rain_25mm",
+   "var": "rain",
+   "name": "Rain \u2265 25 mm",
+   "short": "\u2265 25 mm",
+   "threshold": "24 h rain \u2265 25 mm averaged over the grid cell",
+   "available": true
+  },
+  {
+   "id": "t2m_p95",
+   "var": "t2m",
+   "name": "Hot (top 5 %)",
+   "short": "Hot \u00b7 top 5 %",
+   "threshold": "2 m temperature above the cell's 95th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "t2m_p99",
+   "var": "t2m",
+   "name": "Very hot (top 1 %)",
+   "short": "Very hot \u00b7 top 1 %",
+   "threshold": "2 m temperature above the cell's 99th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "wind_p95",
+   "var": "wind",
+   "name": "Strong wind (top 5 %)",
+   "short": "Wind \u00b7 top 5 %",
+   "threshold": "10 m wind above the cell's 95th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "wind_p99",
+   "var": "wind",
+   "name": "Very strong wind (top 1 %)",
+   "short": "Wind \u00b7 top 1 %",
+   "threshold": "10 m wind above the cell's 99th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "heat",
+   "var": "t2m",
+   "name": "Heat wave (IMD rule)",
+   "short": "Heat wave",
+   "threshold": "IMD heat-wave criterion",
+   "available": false,
+   "note": "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value."
+  }
  ],
  "_x": {
   "sets": {
@@ -141,16 +208,16 @@
    "mslp": "month 06 \u00b110 days"
   },
   "rungs": {
-   "rain": "B3c",
-   "t2m": "B3c",
-   "wind": "B3c",
-   "mslp": "B3c"
+   "rain": "B2c",
+   "t2m": "B2c",
+   "wind": "B2c",
+   "mslp": "B2c"
   },
   "rungReason": {
-   "rain": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 4.765 vs B3 5.01",
-   "t2m": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 1.775 vs B3 1.887",
-   "wind": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 1.655 vs B3 1.753",
-   "mslp": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 149.5 vs B3 158.6"
+   "rain": "B2c: lowest mean held-out RMSE 6.179; next B3c 6.195; not worse than B0bc on 10/10 leads",
+   "t2m": "B2c: lowest mean held-out RMSE 2.289; next B3c 2.296; not worse than B0bc on 10/10 leads",
+   "wind": "B2c: lowest mean held-out RMSE 2.309; next B3c 2.315; not worse than B0bc on 10/10 leads",
+   "mslp": "B2c: lowest mean held-out RMSE 192.1; next B3c 192.7; not worse than B0bc on 10/10 leads"
   },
   "regimeKey": "JJAS:normal",
   "nSeason": {
@@ -166,17 +233,9 @@
    "mslp": 60
   },
   "k": 20,
-  "thresholds": {
-   "rain64": 64.5,
-   "rain115": 115.6,
-   "rain204": 204.5,
-   "wind15": 15.0
-  },
-  "extremeMethod": "weighted vote of bias-corrected members (uncalibrated)",
-  "unavailable": {
-   "heat": "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value."
-  },
-  "codeCommit": "ba0b33b",
-  "created": "2026-09-29T10:43:01+00:00"
+  "extremeMethod": "quantile-mapped weighted vote of all models (B2c weights), calibrated on the training folds",
+  "extremeCalibrated": true,
+  "codeCommit": "a472429",
+  "created": "2026-09-29T11:26:58+00:00"
  }
 }
