@@ -85,7 +85,7 @@ function Hero() {
             particles
             fieldOpacity={0.78}
             outsideIndia={0.22}
-            home={wide ? { lon: 81, lat: 22.5, span: 37, ax: 0.7, ay: 0.5 } : { lon: 80.5, lat: 22.5, span: 30, ax: 0.5, ay: 0.2 }}
+            home={wide ? { lon: 82, lat: 20, span: 52, ax: 0.68, ay: 0.5 } : { lon: 80.5, lat: 22.5, span: 30, ax: 0.5, ay: 0.2 }}
           />
         )}
       </div>

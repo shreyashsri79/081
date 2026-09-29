@@ -507,7 +507,7 @@ export default function WeatherMap(props: Props) {
     const deco = !!live.current.flowField
     const T = deco ? 5 : 7
     const LIFE = deco ? 55 : 110
-    const SPEED = deco ? 0.2 : 0.34
+    const SPEED = deco ? 0.3 : 0.34
     let N = 0, hx = new Float32Array(0), hy = new Float32Array(0), age = new Uint16Array(0)
     let head = 0, bounds = [0, 0, 0, 0], lastView: View | null = null, lastW = 0, raf = 0, visible = true
     const spawn = (k: number) => {
@@ -523,7 +523,7 @@ export default function WeatherMap(props: Props) {
       const latB = clip(latOf(-v.ty / v.s), BOX.lat0, BOX.lat1), latA = clip(latOf((h - v.ty) / v.s), BOX.lat0, BOX.lat1)
       bounds = [lonA, Math.max(lonA, lonB), latA, Math.max(latA, latB)]
       const area = Math.max(0, lonB - lonA) * v.s * Math.max(0, M(latB) - M(latA)) * v.s
-      const n = Math.round(deco ? Math.min(4200, Math.max(600, area / 150)) : Math.min(2400, Math.max(400, area / 280)))
+      const n = Math.round(deco ? Math.min(5200, Math.max(600, area / 115)) : Math.min(2400, Math.max(400, area / 280)))
       if (n !== N) {
         const [ox, oy, og, on] = [hx, hy, age, N]
         hx = new Float32Array(n * T); hy = new Float32Array(n * T); age = new Uint16Array(n)
@@ -591,7 +591,7 @@ export default function WeatherMap(props: Props) {
       const r = Math.min(2, window.devicePixelRatio || 1)
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height)
       ctx.setTransform(r, 0, 0, r, 0, 0)
-      ctx.lineWidth = deco ? 1.25 : 1.1
+      ctx.lineWidth = deco ? 1.5 : 1.1
       const paths: Path2D[] = Array.from({ length: buckets * buckets }, () => new Path2D())
       for (let k = 0; k < N; k++) {
         const lo = hx[k * T + head], la = hy[k * T + head]
@@ -613,7 +613,7 @@ export default function WeatherMap(props: Props) {
       }
       for (let pb = 0; pb < buckets; pb++)
         for (let ab = 0; ab < buckets; ab++) {
-          ctx.strokeStyle = `rgba(14,33,41,${((deco ? 0.62 : 0.75) * ((pb + 1) / buckets) * (1 - ab / buckets)).toFixed(3)})`
+          ctx.strokeStyle = `rgba(14,33,41,${((deco ? 0.8 : 0.75) * ((pb + 1) / buckets) * (1 - ab / buckets)).toFixed(3)})`
           ctx.stroke(paths[pb * buckets + ab])
         }
     }

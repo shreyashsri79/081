@@ -1,30 +1,38 @@
 /**
- * Hero-only wind field: a hand-built stand-in for the look of a real late-monsoon surface wind map
- * (Ventusky-style), used purely as the landing page's moving backdrop. Not model data; the forecast desk
- * always draws bundle winds.
+ * Hero-only wind field: a hand-built stand-in for the look of a real monsoon-season surface wind map over South
+ * Asia and the Indian Ocean (Ventusky-style), used purely as the landing page's moving backdrop. Not model data;
+ * the forecast desk always draws bundle winds.
  *
- * Returns (u, v) in m/s-like units at (lon, lat) and time t (seconds). Pattern:
- *   - south-westerly monsoon flow across the Arabian Sea into the west coast, strongest near 10-15° N;
- *   - westerlies across the Bay of Bengal, curling round a cyclonic swirl near the Andamans;
- *   - arcs and eddies near the equator south-west of India;
- *   - a fast westerly jet over Tibet and the Karakoram, bending round the Afghan high;
- *   - light, variable air over the Indian landmass and the Gangetic plain.
+ * Returns (u, v) in m/s-like units at (lon, lat) and time t (seconds). Pattern, west to east:
+ *   - Somali jet: strong southerly flow up the African coast, turning north-east into the Arabian Sea;
+ *   - gyres off Somalia / the Seychelles and south of Sri Lanka, arcs over the southern Arabian Sea;
+ *   - south-westerly monsoon across the Arabian Sea into the west coast, and across the Bay, converging on Myanmar;
+ *   - north-westerly shamal down the Gulf and over Iran; calm air over India and eastern China;
+ *   - a sharp westerly jet along the Kunlun / northern Tibet; westerly waves over Central Asia and Mongolia;
+ *   - south-east trades south of the equator; arcs over the South China Sea and the Java Sea.
  * Vortex centres drift slowly so the loop never looks canned.
  */
 
 const g = (x: number, y: number, cx: number, cy: number, sx: number, sy: number) =>
   Math.exp(-(((x - cx) / sx) ** 2) - ((y - cy) / sy) ** 2)
+const sig = (x: number) => 1 / (1 + Math.exp(-x))
 
 type Vortex = { cx: number; cy: number; r: number; s: number; ax: number; ay: number; w: number }
 
-// s > 0: anticlockwise (cyclonic in the northern hemisphere)
+// s > 0: anticlockwise
 const VORTICES: Vortex[] = [
-  { cx: 91.5, cy: 15.5, r: 4.5, s: 9, ax: 1.2, ay: 0.8, w: 0.05 },     // Bay of Bengal / Andaman swirl
-  { cx: 66, cy: 1.5, r: 5.5, s: -8, ax: 1.5, ay: 1.0, w: 0.04 },       // eddies south-west of India
-  { cx: 80.5, cy: -2.5, r: 4, s: 7, ax: 1.0, ay: 0.7, w: 0.06 },       // equatorial curl south of Sri Lanka
-  { cx: 62, cy: 33, r: 5, s: -6, ax: 1.0, ay: 0.8, w: 0.03 },          // Afghan high
-  { cx: 71, cy: 27, r: 3.5, s: 4, ax: 0.8, ay: 0.6, w: 0.05 },         // Thar heat low
-  { cx: 58, cy: 16, r: 4, s: -5, ax: 1.2, ay: 0.9, w: 0.045 },         // Arabian Sea anticyclonic bend
+  { cx: 58, cy: 14, r: 5, s: -8, ax: 1.2, ay: 0.8, w: 0.035 },    // arcs over the Arabian Sea
+  { cx: 52, cy: -3, r: 6.5, s: 10, ax: 1.5, ay: 1.0, w: 0.03 },    // Seychelles gyre
+  { cx: 69, cy: 0, r: 5.5, s: -8, ax: 1.2, ay: 1.0, w: 0.04 },     // Maldives eddy
+  { cx: 79, cy: -6, r: 6, s: 8, ax: 1.4, ay: 1.0, w: 0.03 },       // south of Sri Lanka
+  { cx: 87.5, cy: 8, r: 4.5, s: 8, ax: 1.0, ay: 0.8, w: 0.05 },    // southern Bay swirl
+  { cx: 93, cy: 14, r: 3.5, s: 6, ax: 0.8, ay: 0.6, w: 0.05 },     // Andaman Sea
+  { cx: 100, cy: 1, r: 4, s: 6, ax: 0.8, ay: 0.6, w: 0.045 },      // off Sumatra
+  { cx: 113, cy: 12, r: 5, s: -8, ax: 1.2, ay: 0.9, w: 0.035 },    // South China Sea
+  { cx: 110, cy: -8, r: 5, s: -6, ax: 1.0, ay: 0.8, w: 0.04 },     // Java Sea
+  { cx: 62, cy: 31, r: 5, s: -5, ax: 1.0, ay: 0.8, w: 0.03 },      // Iran / Afghan high
+  { cx: 53, cy: 43, r: 6, s: 7, ax: 1.5, ay: 1.0, w: 0.025 },      // Caspian low
+  { cx: 100, cy: 46, r: 6, s: -6, ax: 1.5, ay: 1.0, w: 0.025 },    // Mongolian high
 ]
 
 // Smooth scalar "weather" texture so streak speed and direction vary like a real field.
@@ -37,41 +45,66 @@ function texture(lon: number, lat: number, t: number) {
 }
 
 export function heroWind(lon: number, lat: number, t: number): [number, number] {
-  // large-scale flow by latitude band
-  const sw = g(lon, lat, 66, 12, 22, 7)                 // Arabian Sea monsoon
-  const bay = g(lon, lat, 88, 11, 14, 6)                // Bay of Bengal westerlies
-  const eq = g(lon, lat, 78, 2, 40, 5)                  // near-equatorial westerlies
-  const jet = 1 / (1 + Math.exp(-(lat - 31) * 0.9))     // subtropical jet over Tibet
-  const trades = 1 / (1 + Math.exp((lat + 4) * 0.8))    // south-easterly trades far south
-  let u = 11 * sw + 8 * bay + 5 * eq + 13 * jet - 5 * trades
-  let v = 4.5 * sw + 1.5 * bay + 0.5 * eq + 1.5 * jet * Math.sin(lon * 0.08) + 3 * trades
+  let u = 0, v = 0
 
-  // light, variable air over the Indian landmass and the Gangetic plain
-  const land = g(lon, lat, 78.5, 21.5, 8, 9) + 0.8 * g(lon, lat, 83, 26, 9, 3)
-  const damp = 1 - 0.75 * Math.min(1, land)
-  u = u * damp + land * (-1.5 + 1.2 * texture(lon, lat, t))
-  v = v * damp + land * (0.8 * texture(lat, lon, t + 40))
+  // westerlies and waves north of ~40° N
+  const north = sig((lat - 40) * 0.6)
+  u += 9 * north
+  v += 4 * north * Math.sin((lon - 50) * 0.09 + t * 0.01)
 
-  // Himalaya: flow turns along the range instead of crossing it
-  const ridge = g(lat, 0, 29.5 - (lon - 80) * 0.33, 0, 1.6, 1)
-  v *= 1 - 0.8 * ridge
-  u += 3 * ridge
+  // sharp jet along the Kunlun / northern Tibet (~36° N), strongest 78-100° E
+  const jet = g(lon, lat, 90, 36.3, 14, 1.6)
+  u += 16 * jet
+  v += -1.5 * jet
+
+  // shamal: north-westerly down the Gulf and over Iran
+  const shamal = g(lon, lat, 52, 27, 8, 6)
+  u += 4 * shamal; v += -5 * shamal
+
+  // Somali jet: southerly up the African coast, turning north-east into the Arabian Sea
+  const coast = g(lon, lat, 47 + Math.max(0, lat) * 0.35, 4, 3.5, 8)
+  u += 3 * coast; v += 12 * coast
+  const turn = g(lon, lat, 56, 11, 7, 4)
+  u += 10 * turn; v += 4 * turn
+
+  // south-west monsoon: Arabian Sea into the west coast, Bay of Bengal converging on Myanmar
+  const arab = g(lon, lat, 64, 13, 11, 6)
+  u += 9 * arab; v += 4 * arab
+  const bay = g(lon, lat, 89, 12, 8, 6)
+  u += 6 * bay; v += 6 * bay
+  const yangon = g(lon, lat, 95, 16, 3, 3)
+  u += -2 * yangon; v += 8 * yangon
+
+  // near-equatorial westerlies, south-east trades beyond
+  const eq = g(lon, lat, 80, 2, 30, 4)
+  u += 6 * eq
+  const trades = sig(-(lat + 6) * 0.7) * g(lon, 0, 80, 0, 40, 1)
+  u += -6 * trades; v += 3 * trades
+
+  // South China Sea south-westerlies
+  const scs = g(lon, lat, 112, 14, 7, 6)
+  u += 4 * scs; v += 4 * scs
+
+  // calm air over the Indian landmass, the Tibetan plateau interior and eastern China
+  const calm = Math.min(1,
+    g(lon, lat, 78.5, 21.5, 8, 9) + 0.8 * g(lon, lat, 83, 26, 9, 3) + g(lon, lat, 112, 30, 8, 6) + 0.6 * g(lon, lat, 88, 31, 7, 2))
+  const damp = 1 - 0.8 * calm
+  u *= damp; v *= damp
+  u += calm * (-1.2 + 1.3 * texture(lon, lat, t))
+  v += calm * (0.9 * texture(lat, lon, t + 40))
 
   // drifting vortices
   for (const k of VORTICES) {
     const cx = k.cx + k.ax * Math.sin(t * k.w), cy = k.cy + k.ay * Math.cos(t * k.w * 1.3)
     const dx = lon - cx, dy = lat - cy
-    const r2 = (dx * dx + dy * dy) / (k.r * k.r)
-    const f = k.s * Math.exp(-r2) / k.r
+    const f = (k.s * Math.exp(-(dx * dx + dy * dy) / (k.r * k.r))) / k.r
     u += -dy * f
     v += dx * f
   }
 
   // small-scale texture on everything
   const n = texture(lon, lat, t)
+  const rot = 0.22 * n, c = Math.cos(rot), s = Math.sin(rot), m = 1 + 0.22 * n
   const speed = Math.hypot(u, v)
-  const turn = 0.25 * n
-  const c = Math.cos(turn), s = Math.sin(turn)
-  const k = 1 + 0.25 * n
-  return [(u * c - v * s) * k + (speed < 1 ? 0.6 * n : 0), (u * s + v * c) * k]
+  return [(u * c - v * s) * m + (speed < 1 ? 0.6 * n : 0), (u * s + v * c) * m]
 }
