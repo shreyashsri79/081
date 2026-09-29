@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Panel, Swatch, VarPicker } from '@/components/Controls'
 import LeadChart from '@/components/charts/LeadChart'
-import { useRun, useScorecard, useSource } from '@/lib/api'
+import { useRun, useScorecard, useStamp } from '@/lib/api'
 import type { VarId } from '@/lib/contract'
 import { cellColour, refRmse, verdict, type Ref } from '@/lib/score'
 import { BLEND_COLOUR, MODELS, VARS } from '@/lib/models'
@@ -17,7 +17,7 @@ export default function Skill() {
   const { run, v, lead, set } = useDesk()
   const r = useRun(run).data
   const sc = useScorecard(run).data
-  const synthetic = useSource().data !== 'http'
+  const stamp = useStamp(run)
   const [ref, setRef] = useState<Ref>('best')
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   if (!r || !sc) return null
@@ -48,7 +48,7 @@ export default function Skill() {
         label="Scorecard · blend RMSE vs reference"
         right={
           <>
-            {synthetic && <span className="border border-bad px-1.5 py-0.5 mono text-[10.5px] tracking-wider text-bad">SYNTHETIC · NOT A RESULT</span>}
+            {stamp && <span className="border border-bad px-1.5 py-0.5 mono text-[10.5px] tracking-wider text-bad">{stamp} · NOT A RESULT</span>}
             <label className="flex items-center gap-2 text-[12.5px]">
               <span className="text-ink-3">vs</span>
               <select value={ref} onChange={(e) => setRef(e.target.value as Ref)} className="frame bg-surface px-2 py-1 text-[12.5px]">

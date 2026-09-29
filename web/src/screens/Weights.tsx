@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import WeatherMap from '@/components/WeatherMap'
 import { LeadSlider, Panel, VarPicker } from '@/components/Controls'
 import LeadChart, { WeightStrip } from '@/components/charts/LeadChart'
-import { useCell, useMeteogram, useRun, useSource, useWeights } from '@/lib/api'
+import { useCell, useMeteogram, useRun, useStamp, useWeights } from '@/lib/api'
 import { hexToRgb } from '@/lib/colour'
 import { PAPER, dominantPaint, mix } from '@/lib/paint'
 import type { ModelId } from '@/lib/contract'
@@ -21,7 +21,7 @@ export default function Weights() {
   const ws = useWeights(run, v, lead).data
   const rep = useCell(run, v, lead, cell).data
   const mg = useMeteogram(run, cell).data
-  const synthetic = useSource().data !== 'http'
+  const stamp = useStamp(run)
   const view = ws && weightView !== 'dominant' && !ws.models.includes(weightView) ? 'dominant' : weightView
 
   const paint = useMemo(() => {
@@ -62,7 +62,7 @@ export default function Weights() {
                 cityValue={(k) => (view === 'dominant' ? MODELS[ws.models[ws.dominant[k]]].short : ws.weights[ws.models.indexOf(view as ModelId)][k].toFixed(2))}
                 selected={cell}
                 onSelect={(c) => set({ cell: c })}
-                stamp={synthetic ? 'SYNTHETIC' : undefined}
+                stamp={stamp ?? undefined}
                 readout={(k) => (
                   <div className="mt-0.5 flex flex-col gap-0.5">
                     {ws.models.map((m, a) => (

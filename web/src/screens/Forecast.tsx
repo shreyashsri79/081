@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ChevronDown, CloudRain, Gauge, Layers, LineChart, Pause, Play, Search, Thermometer, Wind, X } from 'lucide-react'
 import WeatherMap, { type MapLayer } from '@/components/WeatherMap'
 import Meteogram from '@/components/Meteogram'
-import { useExtremes, useField, useModelField, useRun, useSource, useWeights } from '@/lib/api'
+import { useExtremes, useField, useModelField, usePrefetchLeads, useRun, useStamp, useWeights } from '@/lib/api'
 import { PROB, SCALES, css, sample, type Scale } from '@/lib/colour'
 import { CITIES } from '@/lib/cities'
 import type { ExtremeId, VarId } from '@/lib/contract'
@@ -254,12 +254,18 @@ export default function Forecast() {
   const { run, v, lead, cell, member, layer, extreme, overlays, drawer, fly, set } = useDesk()
   const wide = useWide()
   const r = useRun(run).data
-  const synthetic = useSource().data !== 'http'
+  const stamp = useStamp(run)
   const fv: VarId = isVar(layer) ? layer : v
   const blend = useField(run, fv, lead).data
   const raw = useModelField(run, isVar(layer) ? member : null, fv, lead).data
   const windF = useField(run, 'wind', lead).data
   const mslpF = useField(run, 'mslp', lead).data
+  usePrefetchLeads(run, lead, {
+    field: isVar(layer) && !member ? layer : undefined,
+    wind: overlays.particles,
+    weights: layer === 'dominant' ? v : undefined,
+    extreme: isExtreme(layer) ? layer : undefined,
+  })
   const wsQ = useWeights(run, v, lead).data
   const ws = wsQ?.var === v ? wsQ : undefined
   const xmQ = useExtremes(run, isExtreme(layer) ? layer : extreme, lead).data
@@ -326,7 +332,7 @@ export default function Forecast() {
           selected={cell}
           onSelect={(c) => set({ cell: c, drawer: true })}
           readout={readout}
-          stamp={synthetic ? 'SYNTHETIC DATA · NOT A FORECAST' : undefined}
+          stamp={stamp ?? undefined}
           fly={fly}
           rightInset={drawer && cell && wide ? 440 : 0}
         >

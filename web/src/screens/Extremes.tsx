@@ -1,6 +1,6 @@
 import WeatherMap from '@/components/WeatherMap'
 import { LeadSlider, Legend, Panel } from '@/components/Controls'
-import { useExtremes, useRun, useSource } from '@/lib/api'
+import { useExtremes, useRun, useStamp } from '@/lib/api'
 import { PROB, css, sample } from '@/lib/colour'
 import type { ExtremeId } from '@/lib/contract'
 import { EXTREMES } from '@/lib/models'
@@ -16,7 +16,7 @@ export default function Extremes() {
   const { run, lead, cell, extreme, set } = useDesk()
   const r = useRun(run).data
   const x = useExtremes(run, extreme, lead).data
-  const synthetic = useSource().data !== 'http'
+  const stamp = useStamp(run)
   const offSeason = r && ((extreme === 'heat' && r.regime.season !== 'MAM') || (extreme.startsWith('rain') && r.regime.season === 'MAM'))
 
   return (
@@ -60,7 +60,7 @@ export default function Extremes() {
                 cityValue={(k) => `${Math.round(x.prob[k] * 100)}%`}
                 selected={cell}
                 onSelect={(c) => set({ cell: c })}
-                stamp={synthetic ? 'SYNTHETIC' : undefined}
+                stamp={stamp ?? undefined}
                 readout={(k) => <div className="mono text-[13px] font-medium">p = {(x.prob[k] * 100).toFixed(0)}%</div>}
               />
             )}

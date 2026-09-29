@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { ChevronDown, Info } from 'lucide-react'
-import { useRun, useRuns, useSource } from '@/lib/api'
+import { useProvenance, useRun, useRuns } from '@/lib/api'
 import { useDesk } from '@/lib/store'
 import { MODELS } from '@/lib/models'
 import { cn } from '@/lib/utils'
@@ -123,20 +123,23 @@ export function RunStrip() {
 }
 
 export function Disclosure() {
-  const src = useSource().data
-  const synthetic = src !== 'http'
   const facts = useLocation().pathname === '/data'
   const { run } = useDesk()
   const runs = useRuns().data ?? []
-  const note = useRun(run).data?.notes?.[0]
+  const prov = useProvenance(run)
+  const synthetic = prov !== 'measured'
+  const notes = useRun(run).data?.notes
+  const note = notes?.find((n) => !n.startsWith('DEMO')) ?? notes?.[0]
   return (
     <div role="note" className="fixed inset-x-0 bottom-0 z-50 flex h-8 items-center gap-3 overflow-hidden bg-ink px-4 text-paper sm:px-6">
       <span className={cn('shrink-0 mono text-[11px] font-medium tracking-wider', synthetic && !facts ? 'text-[#f0a58f]' : 'text-[#9fd3b6]')}>
-        {facts ? 'VERIFIED 28 SEP' : synthetic ? 'SYNTHETIC DATA' : 'ENGINE CONNECTED'}
+        {facts ? 'VERIFIED 28 SEP' : prov === 'demo' ? 'DEMO DATA' : synthetic ? 'SYNTHETIC DATA' : 'ENGINE CONNECTED'}
       </span>
       <p className="truncate text-[12px] text-[#d9dfe1]">
         {facts
           ? 'Facts on this page come from the WeatherBench 2 store check of 28 Sep 2026. Desk screens run on synthetic data until the engine is connected.'
+          : prov === 'demo'
+          ? `Engine connected, serving ${runs.length} demo run${runs.length === 1 ? '' : 's'}: generated inputs through the real pipeline. Not WeatherBench 2 forecasts; real bundles replace these.`
           : synthetic
           ? 'No engine output yet. Every field, weight and score on screen is generated for interface development. It is not a forecast and not a result. Do not screenshot for the deck.'
           : `measured · ${runs.length} run${runs.length === 1 ? '' : 's'} from blend/server.py${note ? ` · ${note}` : ''}`}

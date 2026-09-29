@@ -103,19 +103,33 @@ function feather(lon: number, lat: number) {
 // ------------------------------------------------------ OpenStreetMap tiles
 
 const TILE_URL = (z: number, x: number, y: number) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
-const tiles = new Map<string, { img: HTMLImageElement; ok: boolean }>()
+// Tiles are desaturated once, on load, into their own canvas: a canvas `filter` applied on every
+// redraw would cost a full-screen filter pass per pan frame.
+const TILE_FILTER = 'saturate(0.45) contrast(0.92) brightness(1.03)'
+type Tile = { img: HTMLImageElement; ok: boolean; canvas?: HTMLCanvasElement | HTMLImageElement }
+const tiles = new Map<string, Tile>()
 const tileListeners = new Set<() => void>()
-function tile(z: number, x: number, y: number) {
+function tile(z: number, x: number, y: number, load = true): Tile | undefined {
   const key = `${z}/${x}/${y}`
   let t = tiles.get(key)
-  if (!t) {
+  if (!t && load) {
     const img = new Image()
     img.crossOrigin = 'anonymous'
-    t = { img, ok: false }
-    tiles.set(key, t)
-    const entry = t
-    img.onload = () => { entry.ok = true; tileListeners.forEach((f) => f()) }
+    img.decoding = 'async'
+    const entry: Tile = { img, ok: false }
+    tiles.set(key, entry)
+    img.onload = () => {
+      const c = document.createElement('canvas')
+      c.width = img.naturalWidth || 256; c.height = img.naturalHeight || 256
+      const ctx = c.getContext('2d')!
+      ctx.filter = TILE_FILTER
+      ctx.drawImage(img, 0, 0)
+      entry.canvas = ctx.filter === TILE_FILTER ? c : img   // no canvas filter support: plain tile
+      entry.ok = true
+      tileListeners.forEach((f) => f())
+    }
     img.src = TILE_URL(z, x, y)
+    t = entry
   }
   return t
 }
@@ -228,15 +242,26 @@ export default function WeatherMap(props: Props) {
     return { s, tx: Math.min(maxTx, Math.max(minTx, v.tx)), ty: Math.min(maxTy, Math.max(minTy, v.ty)) }
   }, [s0, size])
 
+  // Pointer and wheel events can fire several times per frame; fold them into one render per frame.
+  const viewNow = useRef<View | null>(null)
+  const viewRaf = useRef(0)
+  useEffect(() => { viewNow.current = view }, [view])
+  useEffect(() => () => cancelAnimationFrame(viewRaf.current), [])
+  const pushView = useCallback((f: (v: View) => View) => {
+    const cur = viewNow.current
+    if (!cur) return
+    viewNow.current = f(cur)
+    if (!viewRaf.current) viewRaf.current = requestAnimationFrame(() => { viewRaf.current = 0; setView(viewNow.current) })
+  }, [])
+
   const zoomAt = useCallback((f: number, px: number, py: number) => {
     touched.current = true
-    setView((v) => {
-      if (!v) return v
+    pushView((v) => {
       const s = Math.min(s0 * 12, Math.max(s0 * 0.8, v.s * f))
       const k = s / v.s
       return clampView({ s, tx: px - (px - v.tx) * k, ty: py - (py - v.ty) * k })
     })
-  }, [s0, clampView])
+  }, [s0, clampView, pushView])
 
   // ---- fly to a place
   useEffect(() => {
@@ -314,12 +339,20 @@ export default function WeatherMap(props: Props) {
 
   const isoData = useMemo(() => (iso ? isobars(grid, iso) : null), [iso, grid])
 
+  // ---- canvas buffers: reallocated only when the box changes size (not on every pan frame)
+  useEffect(() => {
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    for (const c of [base.current, flow.current]) {
+      if (!c || !size.w) continue
+      c.width = size.w * dpr; c.height = size.h * dpr
+    }
+  }, [size])
+
   // ---- draw the static layer
   useEffect(() => {
     const c = base.current
     if (!c || !view || !size.w) return
     const dpr = Math.min(2, window.devicePixelRatio || 1)
-    c.width = size.w * dpr; c.height = size.h * dpr
     const ctx = c.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.fillStyle = '#e4e2de'
@@ -334,18 +367,24 @@ export default function WeatherMap(props: Props) {
       const xB = Math.floor(((lonOf((size.w - view.tx) / view.s) + 180) / 360) * n)
       const mT = MTOP - (-view.ty / view.s), mBt = MTOP - (size.h - view.ty) / view.s
       const yA = Math.max(0, Math.floor(((1 - mT / 180) / 2) * n)), yB = Math.min(n - 1, Math.floor(((1 - mBt / 180) / 2) * n))
-      ctx.save()
-      ctx.filter = 'saturate(0.45) contrast(0.92) brightness(1.03)'
       for (let ty = yA; ty <= yB; ty++)
         for (let tx = xA; tx <= xB; tx++) {
-          const t = tile(z, ((tx % n) + n) % n, ty)
-          if (!t.ok) continue
           const x = (tx * span - 180 - BOX.lon0) * view.s + view.tx
           const y = (MTOP - 180 * (1 - (2 * ty) / n)) * view.s + view.ty
-          ctx.drawImage(t.img, x, y, span * view.s + 0.5, span * view.s + 0.5)
-          tilesDrawn++
+          const size_ = span * view.s + 0.5
+          const xw = ((tx % n) + n) % n
+          const t = tile(z, xw, ty)!
+          if (t.ok) { ctx.drawImage(t.canvas!, x, y, size_, size_); tilesDrawn++; continue }
+          // not loaded yet: stretch the nearest loaded ancestor so zooming never flashes blank
+          for (let up = 1; up <= 4 && z - up >= 0; up++) {
+            const f = 2 ** up, p = tile(z - up, Math.floor(xw / f), Math.floor(ty / f), false)
+            if (!p?.ok) continue
+            const src = p.canvas!, sw = (src as HTMLCanvasElement).width / f
+            ctx.drawImage(src, (xw % f) * sw, (ty % f) * sw, sw, sw, x, y, size_, size_)
+            tilesDrawn++
+            break
+          }
         }
-      ctx.restore()
     }
 
     const P = paths()
@@ -448,53 +487,102 @@ export default function WeatherMap(props: Props) {
   }, [view, size, image, isoData, cities, cityValue, selected, grid, s0, wind, particles, reduce, basemap, fieldOpacity, tileTick])
 
   // ---- wind particles (Ventusky / earth.nullschool style)
+  // One endless loop per mounted map. Wind, view and settings are read from refs every frame, so a new day or a
+  // new field changes how the particles move without restarting them. The loop sleeps while the map is off-screen.
+  const live = useRef({ view, size, wind, grid, basemap, outsideIndia, emphasis })
+  live.current = { view, size, wind, grid, basemap, outsideIndia, emphasis }
+  const animate = !!wind && !!particles && !reduce
   useEffect(() => {
     const c = flow.current
-    if (!c || !view || !size.w) return
-    const dpr = Math.min(2, window.devicePixelRatio || 1)
-    c.width = size.w * dpr; c.height = size.h * dpr
+    if (!c) return
     const ctx = c.getContext('2d')!
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, size.w, size.h)
-    if (!wind || !particles || reduce) return
-
-    const lonA = Math.max(BOX.lon0, lonOf(-view.tx / view.s)), lonB = Math.min(BOX.lon1, lonOf((size.w - view.tx) / view.s))
-    const latB = Math.min(BOX.lat1, latOf(-view.ty / view.s)), latA = Math.max(BOX.lat0, latOf((size.h - view.ty) / view.s))
-    if (lonB <= lonA || latB <= latA) return
-    const areaPx = (lonB - lonA) * view.s * (M(latB) - M(latA)) * view.s
-    const N = Math.round(Math.min(5000, Math.max(600, areaPx / 170)))
-    const lon = new Float32Array(N), lat = new Float32Array(N), age = new Uint16Array(N)
-    const spawn = (k: number) => { lon[k] = lonA + Math.random() * (lonB - lonA); lat[k] = latA + Math.random() * (latB - latA); age[k] = Math.floor(Math.random() * 80) }
-    for (let k = 0; k < N; k++) spawn(k)
-    const K = 0.34 / view.s // world units per frame per m/s: constant speed on screen
-    let raf = 0
-    const frame = () => {
-      ctx.globalCompositeOperation = 'destination-in'
-      ctx.fillStyle = 'rgba(0,0,0,0.93)'; ctx.fillRect(0, 0, size.w, size.h)
-      ctx.globalCompositeOperation = 'source-over'
-      ctx.lineWidth = 1.15
-      // four alpha buckets: particles fade toward the data edge (and outside India when emphasised)
-      const buckets = [new Path2D(), new Path2D(), new Path2D(), new Path2D()]
-      for (let k = 0; k < N; k++) {
-        const gi = (lat[k] - grid.lat0) / grid.step, gj = (lon[k] - grid.lon0) / grid.step
-        if (gi < 0 || gj < 0 || gi > grid.ny - 1 || gj > grid.nx - 1 || ++age[k] > 110) { spawn(k); continue }
-        const u = bilinear(grid, wind.u, gi, gj), v = bilinear(grid, wind.v, gi, gj)
-        const x0 = wx(lon[k]) * view.s + view.tx, y0 = wy(lat[k]) * view.s + view.ty
-        lon[k] += u * K
-        lat[k] += v * K * Math.cos(lat[k] / DEG) // Mercator stretch
-        const x1 = wx(lon[k]) * view.s + view.tx, y1 = wy(lat[k]) * view.s + view.ty
-        let a = basemap ? feather(lon[k], lat[k]) : 1
-        if (outsideIndia < 1) a *= emphasis[Math.round(gi) * grid.nx + Math.round(gj)]
-        if (a < 0.08) continue
-        const p = buckets[Math.min(3, Math.floor(a * 4))]
-        p.moveTo(x0, y0); p.lineTo(x1, y1)
-      }
-      buckets.forEach((p, b) => { ctx.strokeStyle = `rgba(14,33,41,${(0.7 * (b + 1)) / 4})`; ctx.stroke(p) })
-      raf = requestAnimationFrame(frame)
+    if (!animate) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height); return }
+    // Each particle keeps its last T positions (lon/lat) in a ring buffer; every frame the canvas is cleared and
+    // the short trails redrawn, oldest segments faintest. No fade-by-multiplication, so no grey residue builds up,
+    // and trails stay glued to the map while panning or zooming.
+    const T = 7
+    let N = 0, hx = new Float32Array(0), hy = new Float32Array(0), age = new Uint16Array(0)
+    let head = 0, bounds = [0, 0, 0, 0], lastView: View | null = null, lastW = 0, raf = 0, visible = true
+    const spawn = (k: number) => {
+      const lo = bounds[0] + Math.random() * (bounds[1] - bounds[0]), la = bounds[2] + Math.random() * (bounds[3] - bounds[2])
+      for (let t = 0; t < T; t++) { hx[k * T + t] = lo; hy[k * T + t] = la }
+      age[k] = Math.floor(Math.random() * 90)
     }
+    const reseed = (v: View, w: number, h: number) => {
+      const lonA = Math.max(BOX.lon0, lonOf(-v.tx / v.s)), lonB = Math.min(BOX.lon1, lonOf((w - v.tx) / v.s))
+      const latB = Math.min(BOX.lat1, latOf(-v.ty / v.s)), latA = Math.max(BOX.lat0, latOf((h - v.ty) / v.s))
+      bounds = [lonA, Math.max(lonA, lonB), latA, Math.max(latA, latB)]
+      const area = Math.max(0, lonB - lonA) * v.s * Math.max(0, M(latB) - M(latA)) * v.s
+      const n = Math.round(Math.min(2400, Math.max(400, area / 280)))
+      if (n !== N) {
+        const [ox, oy, og, on] = [hx, hy, age, N]
+        hx = new Float32Array(n * T); hy = new Float32Array(n * T); age = new Uint16Array(n)
+        hx.set(ox.subarray(0, Math.min(on, n) * T)); hy.set(oy.subarray(0, Math.min(on, n) * T)); age.set(og.subarray(0, Math.min(on, n)))
+        N = n
+        for (let k = on; k < n; k++) spawn(k)
+      }
+    }
+    const buckets = 4
+    // 30 fps is plenty for flow lines and halves the raster cost; movement is scaled by elapsed time instead.
+    const FRAME_MS = 1000 / 30
+    let last = 0
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame)
+      const { view: v, size: sz, wind: wd, grid: g, basemap: bm, outsideIndia: oi, emphasis: em } = live.current
+      if (!visible || !v || !sz.w || !wd) return
+      if (now - last < FRAME_MS - 2) return
+      const dt = last ? Math.min(3, (now - last) / (1000 / 60)) : 1
+      last = now
+      if (v !== lastView || sz.w !== lastW) { reseed(v, sz.w, sz.h); lastView = v; lastW = sz.w }
+      // advance every particle one step into the next ring slot
+      const K = (0.34 * dt) / v.s // world units per 60 Hz frame per m/s: constant speed on screen
+      const next = (head + 1) % T
+      for (let k = 0; k < N; k++) {
+        const lo = hx[k * T + head], la = hy[k * T + head]
+        const gi = (la - g.lat0) / g.step, gj = (lo - g.lon0) / g.step
+        let ok = !(gi < 0 || gj < 0 || gi > g.ny - 1 || gj > g.nx - 1) && ++age[k] <= 110
+        let u = 0, vv = 0
+        if (ok) { u = bilinear(g, wd.u, gi, gj); vv = bilinear(g, wd.v, gi, gj); ok = Number.isFinite(u) && Number.isFinite(vv) }
+        if (!ok) { spawn(k); age[k] = 0; hx[k * T + next] = hx[k * T + head]; hy[k * T + next] = hy[k * T + head]; continue }
+        hx[k * T + next] = lo + u * K
+        hy[k * T + next] = la + vv * K * Math.cos(la / DEG) // Mercator stretch
+      }
+      head = next
+      // redraw all trails: segment age -> alpha bucket; place (feather, India emphasis) scales it further
+      const r = Math.min(2, window.devicePixelRatio || 1)
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height)
+      ctx.setTransform(r, 0, 0, r, 0, 0)
+      ctx.lineWidth = 1.1
+      const paths: Path2D[] = Array.from({ length: buckets * buckets }, () => new Path2D())
+      for (let k = 0; k < N; k++) {
+        const lo = hx[k * T + head], la = hy[k * T + head]
+        let a = bm ? feather(lo, la) : 1
+        if (oi < 1) {
+          const gi = Math.round((la - g.lat0) / g.step), gj = Math.round((lo - g.lon0) / g.step)
+          if (gi >= 0 && gj >= 0 && gi < g.ny && gj < g.nx) a *= em[gi * g.nx + gj]
+        }
+        if (a < 0.08) continue
+        const pb = Math.min(buckets - 1, Math.floor(a * buckets))
+        for (let s = 1; s < T; s++) {                         // s = 1 newest segment … T-1 oldest
+          const i1 = (head - s + 1 + T) % T, i0 = (head - s + T) % T
+          const x0 = hx[k * T + i0], x1 = hx[k * T + i1]
+          if (x0 === x1 && hy[k * T + i0] === hy[k * T + i1]) continue
+          const p = paths[pb * buckets + Math.min(buckets - 1, Math.floor(((s - 1) / (T - 1)) * buckets))]
+          p.moveTo(wx(x0) * v.s + v.tx, wy(hy[k * T + i0]) * v.s + v.ty)
+          p.lineTo(wx(x1) * v.s + v.tx, wy(hy[k * T + i1]) * v.s + v.ty)
+        }
+      }
+      for (let pb = 0; pb < buckets; pb++)
+        for (let ab = 0; ab < buckets; ab++) {
+          ctx.strokeStyle = `rgba(14,33,41,${(0.75 * ((pb + 1) / buckets) * (1 - ab / buckets)).toFixed(3)})`
+          ctx.stroke(paths[pb * buckets + ab])
+        }
+    }
+    const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting })
+    io.observe(c)
     raf = requestAnimationFrame(frame)
-    return () => cancelAnimationFrame(raf)
-  }, [wind, particles, reduce, view, size, grid, basemap, emphasis, outsideIndia])
+    return () => { cancelAnimationFrame(raf); io.disconnect() }
+  }, [animate])
 
   // ---- pointer interaction: drag to pan, wheel / pinch to zoom, click to select
   const drag = useRef<Drag | null>(null)
@@ -547,7 +635,7 @@ export default function WeatherMap(props: Props) {
     if (d.moved) {
       touched.current = true
       setHover(null)
-      setView((v) => (v ? clampView({ s: v.s, tx: v.tx + dx, ty: v.ty + dy }) : v))
+      pushView((v) => clampView({ s: v.s, tx: v.tx + dx, ty: v.ty + dy }))
     }
   }
   const onUp = (e: React.PointerEvent) => {

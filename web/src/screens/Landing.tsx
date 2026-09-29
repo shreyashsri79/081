@@ -6,7 +6,7 @@ import MapPlate from '@/components/MapPlate'
 import WeatherMap from '@/components/WeatherMap'
 import LeadChart, { WeightStrip } from '@/components/charts/LeadChart'
 import { LineReveal, Marquee, NumberTicker, Reveal } from '@/components/motion'
-import { useExtremes, useField, useMeteogram, useRun, useRuns, useScorecard, useSource, useWeights } from '@/lib/api'
+import { useExtremes, useField, useMeteogram, usePrefetchLeads, useRun, useRuns, useScorecard, useStamp, useWeights } from '@/lib/api'
 import { PROB, SCALES, sample } from '@/lib/colour'
 import type { ModelId, VarId } from '@/lib/contract'
 import { stateIndex } from '@/lib/geo'
@@ -38,10 +38,10 @@ const HERO_VAR: VarId = 't2m'
 const WB2: ModelId[] = ['hres', 'graphcast', 'pangu', 'fuxi', 'gencast']
 const COUNT: Record<number, string> = { 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six' }
 
-function Stamp({ children = 'SYNTHETIC · ILLUSTRATIVE' }: { children?: ReactNode }) {
-  const synthetic = useSource().data !== 'http'
-  if (!synthetic) return null
-  return <span className="border border-bad bg-surface/90 px-1.5 py-0.5 mono text-[10px] tracking-wider text-bad">{children}</span>
+function Stamp({ children = 'ILLUSTRATIVE' }: { children?: ReactNode }) {
+  const stamp = useStamp(useLandingRun())
+  if (!stamp) return null
+  return <span className="border border-bad bg-surface/90 px-1.5 py-0.5 mono text-[10px] tracking-wider text-bad">{stamp} · {children}</span>
 }
 
 // ------------------------------------------------------------------ hero
@@ -57,6 +57,7 @@ function Hero() {
   const [lead, setLead] = useState(1)
   const [playing, setPlaying] = useState(!reduce)
   const r = useRun(RUN).data
+  usePrefetchLeads(RUN, lead, { weights: HERO_VAR, wind: true })
   const wsQ = useWeights(RUN, HERO_VAR, lead).data
   const ws = wsQ?.var === HERO_VAR ? wsQ : undefined
   const wind = useField(RUN, 'wind', lead).data
@@ -359,7 +360,7 @@ function MiniScore() {
   if (!sc || !r) return <div className="h-64" />
   return (
     <div className="frame bg-surface p-3">
-      <div className="mb-2 flex items-center justify-between"><span className="label">Blend vs best single model</span><Stamp children="SYNTHETIC · NOT A RESULT" /></div>
+      <div className="mb-2 flex items-center justify-between"><span className="label">Blend vs best single model</span><Stamp children="NOT A RESULT" /></div>
       <div className="grid gap-1" style={{ gridTemplateColumns: '64px repeat(10, minmax(0, 1fr))' }}>
         <span />
         {r.leads.map((L) => <span key={L} className="text-center mono text-[10px] text-ink-3">D{L}</span>)}
