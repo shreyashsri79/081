@@ -523,7 +523,7 @@ export default function WeatherMap(props: Props) {
       const latB = clip(latOf(-v.ty / v.s), BOX.lat0, BOX.lat1), latA = clip(latOf((h - v.ty) / v.s), BOX.lat0, BOX.lat1)
       bounds = [lonA, Math.max(lonA, lonB), latA, Math.max(latA, latB)]
       const area = Math.max(0, lonB - lonA) * v.s * Math.max(0, M(latB) - M(latA)) * v.s
-      const n = Math.round(deco ? Math.min(5200, Math.max(600, area / 115)) : Math.min(2400, Math.max(400, area / 280)))
+      const n = Math.round(deco ? Math.min(4200, Math.max(600, area / 125)) : Math.min(2400, Math.max(400, area / 280)))
       if (n !== N) {
         const [ox, oy, og, on] = [hx, hy, age, N]
         hx = new Float32Array(n * T); hy = new Float32Array(n * T); age = new Uint16Array(n)
@@ -535,9 +535,10 @@ export default function WeatherMap(props: Props) {
     const buckets = 4
     // Decorative flow is sampled onto a 0.5° lattice once a second and interpolated per particle:
     // the field drifts slowly, and per-particle trig for thousands of particles costs a frame budget.
-    const LAT_STEP = 0.5
+    let LAT_STEP = 0.5
     let lat0 = 0, lon0 = 0, nx = 0, ny = 0, lu = new Float32Array(0), lv = new Float32Array(0), builtAt = -1e9, builtFor = ''
-    const buildLattice = (fl: (lo: number, la: number, t: number) => [number, number], secs: number) => {
+    const buildLattice = (fl: (lo: number, la: number, t: number) => [number, number], secs: number, s: number) => {
+      LAT_STEP = Math.max(0.5, Math.min(1.5, 18 / s))   // one lattice cell ≈ 18 px: finer is invisible, coarser is blocky
       lon0 = Math.floor(bounds[0] - 2); lat0 = Math.floor(bounds[2] - 2)
       nx = Math.ceil((bounds[1] + 2 - lon0) / LAT_STEP) + 1; ny = Math.ceil((bounds[3] + 2 - lat0) / LAT_STEP) + 1
       if (lu.length !== nx * ny) { lu = new Float32Array(nx * ny); lv = new Float32Array(nx * ny) }
@@ -570,7 +571,7 @@ export default function WeatherMap(props: Props) {
       const K = (SPEED * dt) / v.s // world units per 60 Hz frame per m/s: constant speed on screen
       const next = (head + 1) % T
       const secs = now / 1000
-      if (fl && (secs - builtAt > 1 || builtFor !== bounds.join())) buildLattice(fl, secs)
+      if (fl && (secs - builtAt > 2 || builtFor !== bounds.join())) buildLattice(fl, secs, v.s)
       for (let k = 0; k < N; k++) {
         const lo = hx[k * T + head], la = hy[k * T + head]
         let ok: boolean, u = 0, vv = 0
