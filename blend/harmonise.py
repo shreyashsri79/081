@@ -8,9 +8,14 @@ from . import config as C
 
 
 def to_display_units(ds: xr.Dataset) -> xr.Dataset:
-    """Precipitation m -> mm. Temperature stays in K."""
+    """Precipitation m -> mm. Temperature stays in K.
+
+    WB2 stores carry no units on precipitation, and FuXi's `total_precipitation_24hr_from_6hr` is already
+    in mm while the others are in m. A 24 h total averaged over a year and the whole domain is a few mm,
+    i.e. ~0.003 m, so a mean above 0.05 can only be mm."""
     if C.RAIN in ds:
-        ds = ds.assign({C.RAIN: ds[C.RAIN] * 1000.0})
+        already_mm = float(ds[C.RAIN].mean(skipna=True)) > 0.05
+        ds = ds.assign({C.RAIN: ds[C.RAIN] * (1.0 if already_mm else 1000.0)})
     return ds
 
 
