@@ -1,14 +1,12 @@
 {
- "id": "hindcast-20200715",
+ "id": "hindcast-20220101",
  "kind": "hindcast",
- "init": "2020-07-15T00:00Z",
+ "init": "2022-01-01T00:00Z",
  "status": "ok",
  "models": [
   "hres",
   "graphcast",
-  "pangu",
-  "fuxi",
-  "gencast"
+  "pangu"
  ],
  "grid": {
   "lat0": 5.999999999999996,
@@ -38,90 +36,82 @@
  "modelsByVar": {
   "rain": [
    "hres",
-   "graphcast",
-   "fuxi",
-   "gencast"
+   "graphcast"
   ],
   "t2m": [
    "hres",
    "graphcast",
-   "pangu",
-   "fuxi",
-   "gencast"
+   "pangu"
   ],
   "wind": [
    "hres",
    "graphcast",
-   "pangu",
-   "fuxi",
-   "gencast"
+   "pangu"
   ],
   "mslp": [
    "hres",
    "graphcast",
-   "pangu",
-   "fuxi",
-   "gencast"
+   "pangu"
   ]
  },
  "regime": {
-  "season": "JJAS",
-  "label": "Monsoon normal",
+  "season": "JF",
+  "label": "Normal",
   "basis": "init"
  },
  "rung": "B2c",
  "steps": [
   {
-   "name": "fit rain on S4, fold m07 held out",
+   "name": "fit rain on S2, fold 2022 held out",
    "status": "ok",
-   "seconds": 3.49
+   "seconds": 1.9
   },
   {
    "name": "blend rain (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.51
+   "seconds": 0.91
   },
   {
-   "name": "fit t2m on S3, fold m07 held out",
+   "name": "fit t2m on S1, fold 2022 held out",
    "status": "ok",
-   "seconds": 4.82
+   "seconds": 3.22
   },
   {
    "name": "blend t2m (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.53
+   "seconds": 0.93
   },
   {
-   "name": "fit wind on S3, fold m07 held out",
+   "name": "fit wind on S1, fold 2022 held out",
    "status": "ok",
-   "seconds": 4.02
+   "seconds": 3.21
   },
   {
-   "name": "blend wind (B3) + extremes",
+   "name": "blend wind (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.54
+   "seconds": 0.95
   },
   {
-   "name": "fit mslp on S3, fold m07 held out",
+   "name": "fit mslp on S1, fold 2022 held out",
    "status": "ok",
-   "seconds": 4.08
+   "seconds": 3.29
   },
   {
-   "name": "blend mslp (B3) + extremes",
+   "name": "blend mslp (B2) + extremes",
    "status": "ok",
    "seconds": 0.02
   },
   {
    "name": "write bundle",
    "status": "ok",
-   "seconds": 0.09
+   "seconds": 0.05
   }
  ],
  "provenance": "measured",
  "notes": [
   "Rain truth: CHIRPS 2.0, block mean to the model grid, land only: rain is scored and weighted over land; sea cells are blank. T2m, wind and MSLP truth: ERA5.",
-  "Weights for this date are fitted without its month 07 \u00b110 days (out-of-sample).",
-  "Rung per variable: rain B2c, t2m B2c, wind B3, mslp B3.",
+  "Weights for this date are fitted without its year 2022 (out-of-sample).",
+  "Rung per variable: rain B2c, t2m B2c, wind B2c, mslp B2.",
   "Grid 1.5\u00b0 (~166 km); values are cell averages.",
   "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value.",
   "Wind particles unavailable: u/v components are not in the cache."
@@ -195,46 +185,46 @@
  ],
  "_x": {
   "sets": {
-   "rain": "S4",
-   "t2m": "S3",
-   "wind": "S3",
-   "mslp": "S3"
+   "rain": "S2",
+   "t2m": "S1",
+   "wind": "S1",
+   "mslp": "S1"
   },
   "folds": {
-   "rain": "month 07 \u00b110 days",
-   "t2m": "month 07 \u00b110 days",
-   "wind": "month 07 \u00b110 days",
-   "mslp": "month 07 \u00b110 days"
+   "rain": "year 2022",
+   "t2m": "year 2022",
+   "wind": "year 2022",
+   "mslp": "year 2022"
   },
   "rungs": {
    "rain": "B2c",
    "t2m": "B2c",
-   "wind": "B3",
-   "mslp": "B3"
+   "wind": "B2c",
+   "mslp": "B2"
   },
   "rungReason": {
-   "rain": "B2c: lowest mean held-out RMSE 5.448; next B3c 5.457; not worse than B0bc on 8/10 leads",
-   "t2m": "B2c: lowest mean held-out RMSE 0.9969; next B3 0.9993; not worse than B0bc on 10/10 leads",
-   "wind": "B3: lowest mean held-out RMSE 0.7642; next B3s 0.7643; not worse than B0bc on 10/10 leads",
-   "mslp": "B3: lowest mean held-out RMSE 124.1; next B3s 124.1; not worse than B0bc on 10/10 leads"
+   "rain": "B2c: lowest mean held-out RMSE 5.447; next B3c 5.459; not worse than B0bc on 8/10 leads",
+   "t2m": "B2c: lowest mean held-out RMSE 1.079; next B3s 1.083; not worse than B0bc on 10/10 leads",
+   "wind": "B2c: lowest mean held-out RMSE 0.7557; next B2 0.7584; not worse than B0bc on 10/10 leads",
+   "mslp": "B2: lowest mean held-out RMSE 132.4; next B3s 132.4; not worse than B0bc on 10/10 leads"
   },
-  "regimeKey": "JJAS:normal",
+  "regimeKey": "JF:normal",
   "nSeason": {
-   "rain": 71,
-   "t2m": 71,
-   "wind": 71,
-   "mslp": 71
+   "rain": 119,
+   "t2m": 119,
+   "wind": 119,
+   "mslp": 119
   },
   "nRegime": {
-   "rain": 55,
-   "t2m": 55,
-   "wind": 55,
-   "mslp": 55
+   "rain": 111,
+   "t2m": 111,
+   "wind": 111,
+   "mslp": 111
   },
   "k": 20,
   "extremeMethod": "quantile-mapped weighted vote of all models (B2c weights), calibrated on the training folds",
   "extremeCalibrated": true,
   "codeCommit": "cb7a12c",
-  "created": "2026-09-29T12:05:01+00:00"
+  "created": "2026-09-29T12:07:51+00:00"
  }
 }

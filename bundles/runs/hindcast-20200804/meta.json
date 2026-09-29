@@ -1,7 +1,7 @@
 {
- "id": "hindcast-20200715",
+ "id": "hindcast-20200804",
  "kind": "hindcast",
- "init": "2020-07-15T00:00Z",
+ "init": "2020-08-04T00:00Z",
  "status": "ok",
  "models": [
   "hres",
@@ -66,45 +66,45 @@
  },
  "regime": {
   "season": "JJAS",
-  "label": "Monsoon normal",
+  "label": "Depression",
   "basis": "init"
  },
  "rung": "B2c",
  "steps": [
   {
-   "name": "fit rain on S4, fold m07 held out",
+   "name": "fit rain on S4, fold m08 held out",
    "status": "ok",
-   "seconds": 3.49
+   "seconds": 2.87
   },
   {
    "name": "blend rain (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.51
+   "seconds": 0.54
   },
   {
-   "name": "fit t2m on S3, fold m07 held out",
+   "name": "fit t2m on S3, fold m08 held out",
    "status": "ok",
-   "seconds": 4.82
+   "seconds": 4.09
   },
   {
    "name": "blend t2m (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.53
+   "seconds": 0.49
   },
   {
-   "name": "fit wind on S3, fold m07 held out",
+   "name": "fit wind on S3, fold m08 held out",
    "status": "ok",
-   "seconds": 4.02
+   "seconds": 3.96
   },
   {
    "name": "blend wind (B3) + extremes",
    "status": "ok",
-   "seconds": 0.54
+   "seconds": 0.48
   },
   {
-   "name": "fit mslp on S3, fold m07 held out",
+   "name": "fit mslp on S3, fold m08 held out",
    "status": "ok",
-   "seconds": 4.08
+   "seconds": 3.99
   },
   {
    "name": "blend mslp (B3) + extremes",
@@ -120,7 +120,7 @@
  "provenance": "measured",
  "notes": [
   "Rain truth: CHIRPS 2.0, block mean to the model grid, land only: rain is scored and weighted over land; sea cells are blank. T2m, wind and MSLP truth: ERA5.",
-  "Weights for this date are fitted without its month 07 \u00b110 days (out-of-sample).",
+  "Weights for this date are fitted without its month 08 \u00b110 days (out-of-sample).",
   "Rung per variable: rain B2c, t2m B2c, wind B3, mslp B3.",
   "Grid 1.5\u00b0 (~166 km); values are cell averages.",
   "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value.",
@@ -201,10 +201,10 @@
    "mslp": "S3"
   },
   "folds": {
-   "rain": "month 07 \u00b110 days",
-   "t2m": "month 07 \u00b110 days",
-   "wind": "month 07 \u00b110 days",
-   "mslp": "month 07 \u00b110 days"
+   "rain": "month 08 \u00b110 days",
+   "t2m": "month 08 \u00b110 days",
+   "wind": "month 08 \u00b110 days",
+   "mslp": "month 08 \u00b110 days"
   },
   "rungs": {
    "rain": "B2c",
@@ -218,7 +218,7 @@
    "wind": "B3: lowest mean held-out RMSE 0.7642; next B3s 0.7643; not worse than B0bc on 10/10 leads",
    "mslp": "B3: lowest mean held-out RMSE 124.1; next B3s 124.1; not worse than B0bc on 10/10 leads"
   },
-  "regimeKey": "JJAS:normal",
+  "regimeKey": "JJAS:depression",
   "nSeason": {
    "rain": 71,
    "t2m": 71,
@@ -226,15 +226,15 @@
    "mslp": 71
   },
   "nRegime": {
-   "rain": 55,
-   "t2m": 55,
-   "wind": 55,
-   "mslp": 55
+   "rain": 3,
+   "t2m": 3,
+   "wind": 3,
+   "mslp": 3
   },
   "k": 20,
   "extremeMethod": "quantile-mapped weighted vote of all models (B2c weights), calibrated on the training folds",
   "extremeCalibrated": true,
   "codeCommit": "cb7a12c",
-  "created": "2026-09-29T12:05:01+00:00"
+  "created": "2026-09-29T12:07:20+00:00"
  }
 }

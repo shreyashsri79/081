@@ -1,7 +1,7 @@
 {
- "id": "hindcast-20220502",
+ "id": "hindcast-20180101",
  "kind": "hindcast",
- "init": "2022-05-02T00:00Z",
+ "init": "2018-01-01T00:00Z",
  "status": "ok",
  "models": [
   "hres",
@@ -9,8 +9,8 @@
   "pangu"
  ],
  "grid": {
-  "lat0": 6.0,
-  "lon0": 66.0,
+  "lat0": 5.999999999999996,
+  "lon0": 65.99999999999999,
   "step": 1.5,
   "ny": 23,
   "nx": 23
@@ -55,67 +55,66 @@
   ]
  },
  "regime": {
-  "season": "MAM",
+  "season": "JF",
   "label": "Normal",
   "basis": "init"
  },
  "rung": "B2c",
  "steps": [
   {
-   "name": "fit rain on S2, fold 2022 held out",
+   "name": "fit rain on S2, fold 2018 held out",
    "status": "ok",
-   "seconds": 1.22
+   "seconds": 2.82
   },
   {
    "name": "blend rain (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.45
+   "seconds": 0.91
   },
   {
-   "name": "fit t2m on S1, fold 2022 held out",
+   "name": "fit t2m on S1, fold 2018 held out",
    "status": "ok",
-   "seconds": 2.87
+   "seconds": 4.33
   },
   {
    "name": "blend t2m (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.86
+   "seconds": 0.93
   },
   {
-   "name": "fit wind on S1, fold 2022 held out",
+   "name": "fit wind on S1, fold 2018 held out",
    "status": "ok",
-   "seconds": 2.76
+   "seconds": 3.26
   },
   {
    "name": "blend wind (B2c) + extremes",
    "status": "ok",
-   "seconds": 0.82
+   "seconds": 0.94
   },
   {
-   "name": "fit mslp on S1, fold 2022 held out",
+   "name": "fit mslp on S1, fold 2018 held out",
    "status": "ok",
-   "seconds": 2.5
+   "seconds": 3.3
   },
   {
-   "name": "blend mslp (B2c) + extremes",
+   "name": "blend mslp (B2) + extremes",
    "status": "ok",
-   "seconds": 0.01
+   "seconds": 0.02
   },
   {
    "name": "write bundle",
    "status": "ok",
-   "seconds": 0.02
+   "seconds": 0.05
   }
  ],
- "provenance": "synthetic",
+ "provenance": "measured",
  "notes": [
-  "DEMO BUNDLE: generated data in the engine's exact format, not WeatherBench 2 forecasts. It shows how the dashboard works; replace with bundles from run_all.py --export-runs before quoting any number.",
   "Rain truth: CHIRPS 2.0, block mean to the model grid, land only: rain is scored and weighted over land; sea cells are blank. T2m, wind and MSLP truth: ERA5.",
-  "Weights for this date are fitted without its year 2022 (out-of-sample).",
-  "Rung per variable: rain B2c, t2m B2c, wind B2c, mslp B2c.",
+  "Weights for this date are fitted without its year 2018 (out-of-sample).",
+  "Rung per variable: rain B2c, t2m B2c, wind B2c, mslp B2.",
   "Grid 1.5\u00b0 (~166 km); values are cell averages.",
   "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value.",
-  "Wind particles: u/v members blended with the wind-speed weights (direction only, no bias correction)."
+  "Wind particles unavailable: u/v components are not in the cache."
  ],
  "extremes": [
   {
@@ -192,40 +191,40 @@
    "mslp": "S1"
   },
   "folds": {
-   "rain": "year 2022",
-   "t2m": "year 2022",
-   "wind": "year 2022",
-   "mslp": "year 2022"
+   "rain": "year 2018",
+   "t2m": "year 2018",
+   "wind": "year 2018",
+   "mslp": "year 2018"
   },
   "rungs": {
    "rain": "B2c",
    "t2m": "B2c",
    "wind": "B2c",
-   "mslp": "B2c"
+   "mslp": "B2"
   },
   "rungReason": {
-   "rain": "B2c: lowest mean held-out RMSE 6.779; next B3c 6.787; not worse than B0bc on 10/10 leads",
-   "t2m": "B2c: lowest mean held-out RMSE 2.396; next B3c 2.399; not worse than B0bc on 10/10 leads",
-   "wind": "B2c: lowest mean held-out RMSE 2.384; next B3c 2.386; not worse than B0bc on 10/10 leads",
-   "mslp": "B2c: lowest mean held-out RMSE 201.2; next B3c 201.5; not worse than B0bc on 10/10 leads"
+   "rain": "B2c: lowest mean held-out RMSE 5.447; next B3c 5.459; not worse than B0bc on 8/10 leads",
+   "t2m": "B2c: lowest mean held-out RMSE 1.079; next B3s 1.083; not worse than B0bc on 10/10 leads",
+   "wind": "B2c: lowest mean held-out RMSE 0.7557; next B2 0.7584; not worse than B0bc on 10/10 leads",
+   "mslp": "B2: lowest mean held-out RMSE 132.4; next B3s 132.4; not worse than B0bc on 10/10 leads"
   },
-  "regimeKey": "MAM:normal",
+  "regimeKey": "JF:normal",
   "nSeason": {
-   "rain": 122,
-   "t2m": 122,
-   "wind": 122,
-   "mslp": 122
+   "rain": 119,
+   "t2m": 119,
+   "wind": 119,
+   "mslp": 119
   },
   "nRegime": {
-   "rain": 79,
-   "t2m": 79,
-   "wind": 79,
-   "mslp": 79
+   "rain": 104,
+   "t2m": 104,
+   "wind": 104,
+   "mslp": 104
   },
   "k": 20,
   "extremeMethod": "quantile-mapped weighted vote of all models (B2c weights), calibrated on the training folds",
   "extremeCalibrated": true,
-  "codeCommit": "a472429",
-  "created": "2026-09-29T11:27:44+00:00"
+  "codeCommit": "cb7a12c",
+  "created": "2026-09-29T12:05:17+00:00"
  }
 }

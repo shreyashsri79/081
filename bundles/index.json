@@ -1,11 +1,11 @@
 {
  "contractVersion": "1.1",
- "created": "2026-09-29T11:29:25+00:00",
+ "created": "2026-09-29T12:11:21+00:00",
  "runs": [
   {
-   "id": "hindcast-20180720",
+   "id": "hindcast-20180101",
    "kind": "hindcast",
-   "init": "2018-07-20T00:00Z",
+   "init": "2018-01-01T00:00Z",
    "status": "ok",
    "models": [
     "hres",
@@ -14,9 +14,53 @@
    ]
   },
   {
-   "id": "hindcast-20200512",
+   "id": "hindcast-20180213",
    "kind": "hindcast",
-   "init": "2020-05-12T00:00Z",
+   "init": "2018-02-13T00:00Z",
+   "status": "ok",
+   "models": [
+    "hres",
+    "graphcast",
+    "pangu"
+   ]
+  },
+  {
+   "id": "hindcast-20180301",
+   "kind": "hindcast",
+   "init": "2018-03-01T00:00Z",
+   "status": "ok",
+   "models": [
+    "hres",
+    "graphcast",
+    "pangu"
+   ]
+  },
+  {
+   "id": "hindcast-20180610",
+   "kind": "hindcast",
+   "init": "2018-06-10T00:00Z",
+   "status": "ok",
+   "models": [
+    "hres",
+    "graphcast",
+    "pangu"
+   ]
+  },
+  {
+   "id": "hindcast-20180616",
+   "kind": "hindcast",
+   "init": "2018-06-16T00:00Z",
+   "status": "ok",
+   "models": [
+    "hres",
+    "graphcast",
+    "pangu"
+   ]
+  },
+  {
+   "id": "hindcast-20200101",
+   "kind": "hindcast",
+   "init": "2020-01-01T00:00Z",
    "status": "ok",
    "models": [
     "hres",
@@ -27,9 +71,35 @@
    ]
   },
   {
-   "id": "hindcast-20200608",
+   "id": "hindcast-20200107",
    "kind": "hindcast",
-   "init": "2020-06-08T00:00Z",
+   "init": "2020-01-07T00:00Z",
+   "status": "ok",
+   "models": [
+    "hres",
+    "graphcast",
+    "pangu",
+    "fuxi",
+    "gencast"
+   ]
+  },
+  {
+   "id": "hindcast-20200523",
+   "kind": "hindcast",
+   "init": "2020-05-23T00:00Z",
+   "status": "ok",
+   "models": [
+    "hres",
+    "graphcast",
+    "pangu",
+    "fuxi",
+    "gencast"
+   ]
+  },
+  {
+   "id": "hindcast-20200605",
+   "kind": "hindcast",
+   "init": "2020-06-05T00:00Z",
    "status": "ok",
    "models": [
     "hres",
@@ -53,9 +123,9 @@
    ]
   },
   {
-   "id": "hindcast-20200820",
+   "id": "hindcast-20200804",
    "kind": "hindcast",
-   "init": "2020-08-20T00:00Z",
+   "init": "2020-08-04T00:00Z",
    "status": "ok",
    "models": [
     "hres",
@@ -66,9 +136,9 @@
    ]
   },
   {
-   "id": "hindcast-20220502",
+   "id": "hindcast-20220101",
    "kind": "hindcast",
-   "init": "2022-05-02T00:00Z",
+   "init": "2022-01-01T00:00Z",
    "status": "ok",
    "models": [
     "hres",
