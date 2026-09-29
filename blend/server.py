@@ -153,7 +153,7 @@ def create_app(bundles: Path | str | None = None, web_dist: Path | str | None = 
         m = meta(run)
         sets = m["_x"]["sets"]
         rows, regions, texts = [], [], []
-        for s in dict.fromkeys(sets.values()):
+        for s in sorted(set(sets.values())):
             try:
                 card = B.read_scorecard(root, s)
             except FileNotFoundError:

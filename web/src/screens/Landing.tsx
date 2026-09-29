@@ -6,21 +6,37 @@ import MapPlate from '@/components/MapPlate'
 import WeatherMap from '@/components/WeatherMap'
 import LeadChart, { WeightStrip } from '@/components/charts/LeadChart'
 import { LineReveal, Marquee, NumberTicker, Reveal } from '@/components/motion'
-import { useExtremes, useField, useMeteogram, useRun, useScorecard, useSource, useWeights } from '@/lib/api'
+import { useExtremes, useField, useMeteogram, useRun, useRuns, useScorecard, useSource, useWeights } from '@/lib/api'
 import { PROB, SCALES, sample } from '@/lib/colour'
 import type { ModelId, VarId } from '@/lib/contract'
 import { stateIndex } from '@/lib/geo'
 import { BLEND_COLOUR, MODELS, VARS } from '@/lib/models'
 import { dominantPaint, dominantShare } from '@/lib/paint'
 import { cellColour, verdict } from '@/lib/score'
-import { cn } from '@/lib/utils'
+import { cn, validDate } from '@/lib/utils'
 
-/** The landing always shows the five-model hindcast: it is the one with every model. */
-const RUN = 'hindcast-20200715'
-/** Nagpur, 21.0° N 79.0° E: the PPT guide's "five friends" question. */
-const NAGPUR: [number, number] = [32, 28]
+/** The landing shows the five-model hindcast when it exists: it is the one with every model. */
+const DEFAULT_RUN = 'hindcast-20200715'
+
+/** DEFAULT_RUN if the source has it, else its first hindcast (the engine may hold other dates). */
+function useLandingRun() {
+  const runs = useRuns().data
+  if (!runs || runs.some((r) => r.id === DEFAULT_RUN)) return DEFAULT_RUN
+  return runs.find((r) => r.kind === 'hindcast')?.id ?? runs[0]?.id ?? DEFAULT_RUN
+}
+
+/** Grid cell nearest to a place, for whatever grid the run has (0.5° synthetic, 1.5° engine). */
+function useCellAt(run: string, lat: number, lon: number): [number, number] | null {
+  const g = useRun(run).data?.grid
+  if (!g) return null
+  const i = Math.round((lat - g.lat0) / g.step), j = Math.round((lon - g.lon0) / g.step)
+  return i >= 0 && i < g.ny && j >= 0 && j < g.nx ? [i, j] : null
+}
+/** Nagpur, the PPT guide's "five friends" question. */
+const NAGPUR = { lat: 21.15, lon: 79.09 }
 const HERO_VAR: VarId = 't2m'
 const WB2: ModelId[] = ['hres', 'graphcast', 'pangu', 'fuxi', 'gencast']
+const COUNT: Record<number, string> = { 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six' }
 
 function Stamp({ children = 'SYNTHETIC · ILLUSTRATIVE' }: { children?: ReactNode }) {
   const synthetic = useSource().data !== 'http'
@@ -35,6 +51,7 @@ function Stamp({ children = 'SYNTHETIC · ILLUSTRATIVE' }: { children?: ReactNod
  * wind flowing over it, Day 1 → 10 on loop. The copy sits on a glass panel.
  */
 function Hero() {
+  const RUN = useLandingRun()
   const reduce = useReducedMotion()
   const wide = useMedia('(min-width: 1024px)')
   const [lead, setLead] = useState(1)
@@ -154,24 +171,30 @@ function Hero() {
 // ---------------------------------------------------------- five friends
 
 function FiveFriends() {
-  const mg = useMeteogram(RUN, NAGPUR).data
+  const RUN = useLandingRun()
+  const nagpur = useCellAt(RUN, NAGPUR.lat, NAGPUR.lon)
+  const mg = useMeteogram(RUN, nagpur).data
+  const runModels = useRun(RUN).data?.models
   const lead = 3
   const rain = mg?.vars.find((v) => v.var === 'rain')
   const a = mg ? mg.leads.indexOf(lead) : 0
+  // every model in the run; those without precipitation (Pangu) show as "no rain output"
   const rows = rain
-    ? WB2.map((m) => {
+    ? (runModels ?? WB2).map((m) => {
         const mem = rain.members.find((x) => x.model === m)
         return { model: m, value: mem?.values[a], weight: mem?.weights[a] }
       })
     : []
   const max = Math.max(1, ...rows.map((r) => r.value ?? 0), rain?.blend[a] ?? 0)
+  const init = useRun(RUN).data?.init
+  const day = init ? new Date(validDate(init, lead)).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' }) : 'Thursday'
 
   return (
     <section className="border-y border-ink bg-surface px-4 py-16 sm:px-8">
       <div className="grid gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <div className="flex flex-col gap-5">
           <Reveal><div className="label text-ink-2">The problem</div></Reveal>
-          <Reveal><h2 className="t-section">Ask five models about Thursday's rain in Nagpur.</h2></Reveal>
+          <Reveal><h2 className="t-section">Ask {COUNT[rows.length] ?? 'five'} models about {day}’s rain in Nagpur.</h2></Reveal>
           <Reveal delay={0.1}>
             <p className="max-w-[32rem] text-[16px] leading-relaxed text-ink-2">
               You get five answers. Averaging them invents a road nobody suggested, and always following one model ignores that
@@ -180,7 +203,7 @@ function FiveFriends() {
             </p>
           </Reveal>
           <Reveal delay={0.2}>
-            <p className="text-[12.5px] text-ink-3">21.0° N 79.0° E · Day {lead} · 24 h rainfall. Pangu-Weather has no precipitation output, so it cannot vote on rain.</p>
+            <p className="text-[12.5px] text-ink-3">{mg ? `${mg.lat.toFixed(1)}° N ${mg.lon.toFixed(1)}° E · ` : ''}Day {lead} · 24 h rainfall. Pangu-Weather has no precipitation output, so it cannot vote on rain.</p>
           </Reveal>
         </div>
         <div className="frame flex flex-col gap-2 bg-paper p-4 sm:p-5">
@@ -268,6 +291,7 @@ function LineUp() {
 }
 
 function TrackRecord() {
+  const RUN = useLandingRun()
   const sc = useScorecard(RUN).data
   const r = useRun(RUN).data
   if (!sc || !r) return <div className="h-64" />
@@ -283,7 +307,9 @@ function TrackRecord() {
 }
 
 function WeightCard() {
-  const mg = useMeteogram(RUN, NAGPUR).data
+  const RUN = useLandingRun()
+  const nagpur = useCellAt(RUN, NAGPUR.lat, NAGPUR.lon)
+  const mg = useMeteogram(RUN, nagpur).data
   const t = mg?.vars.find((v) => v.var === 't2m')
   return (
     <div className="frame flex flex-col gap-3 bg-surface p-4">
@@ -303,11 +329,14 @@ function WeightCard() {
 }
 
 function MiniMap({ kind }: { kind: 'blend' | 'prob' }) {
+  const RUN = useLandingRun()
   const r = useRun(RUN).data
   const f = useField(RUN, 'rain', 3).data
   const x = useExtremes(RUN, 'rain64', 3).data
   const paint = useMemo(() => (k: number) =>
-    kind === 'blend' ? (f ? sample(SCALES.rain, f.values[k]) : null) : (x ? sample(PROB, x.prob[k]) : null), [kind, f, x])
+    kind === 'blend'
+      ? (f && Number.isFinite(f.values[k]) ? sample(SCALES.rain, f.values[k]) : null)
+      : (x && Number.isFinite(x.prob[k]) ? sample(PROB, x.prob[k]) : null), [kind, f, x])
   return (
     <div className="frame bg-surface p-3">
       <div className="mb-1 flex items-center justify-between">
@@ -324,6 +353,7 @@ function MiniMap({ kind }: { kind: 'blend' | 'prob' }) {
 }
 
 function MiniScore() {
+  const RUN = useLandingRun()
   const sc = useScorecard(RUN).data
   const r = useRun(RUN).data
   if (!sc || !r) return <div className="h-64" />

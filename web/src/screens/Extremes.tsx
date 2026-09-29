@@ -36,9 +36,16 @@ export default function Extremes() {
         <div className="flex flex-col gap-3 p-3">
           <div className="flex flex-wrap items-baseline gap-x-3 text-[12.5px]">
             <span className="mono">{EXTREMES[extreme].threshold}</span>
-            <span className="text-ink-3">Weighted exceedance of quantile-mapped members, calibrated. Not thresholded from the blend mean.</span>
+            <span className="text-ink-3">
+              {x?.method ? `${x.method[0].toUpperCase()}${x.method.slice(1)}.` : 'Weighted exceedance of members (illustrative).'} Not thresholded from the blend mean.
+            </span>
+            {x?.calibrated === false && <span className="border border-warn px-1.5 py-0.5 mono text-[10.5px] text-warn">UNCALIBRATED</span>}
           </div>
-          {offSeason && (
+          {x?.available === false && (
+            <p className="border border-warn bg-warn-bg px-3 py-1.5 text-[12.5px] text-warn">{x.note ?? 'Not available for this run.'}</p>
+          )}
+          {x?.available !== false && x?.note && <p className="text-[12px] text-ink-3">{x.note}</p>}
+          {x?.available !== false && offSeason && (
             <p className="border border-warn bg-warn-bg px-3 py-1.5 text-[12.5px] text-warn">
               Out of season for this run ({r?.regime.season}). Low probabilities here are expected, not a fault.
             </p>

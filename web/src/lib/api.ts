@@ -9,8 +9,13 @@ import * as synth from './synthetic'
  */
 let mode: Promise<'http' | 'synthetic'> | null = null
 function source() {
+  // The engine counts only if it answers with JSON and has at least one run to show.
   mode ??= fetch('/api/runs', { signal: AbortSignal.timeout(1500) })
-    .then((r) => (r.ok && r.headers.get('content-type')?.includes('json') ? 'http' as const : 'synthetic' as const))
+    .then(async (r) => {
+      if (!r.ok || !r.headers.get('content-type')?.includes('json')) return 'synthetic' as const
+      const runs = await r.json()
+      return Array.isArray(runs) && runs.length > 0 ? 'http' as const : 'synthetic' as const
+    })
     .catch(() => 'synthetic' as const)
   return mode
 }
@@ -23,7 +28,8 @@ async function get<T>(path: string, fallback: () => T, revive?: (x: any) => T): 
   return revive ? revive(body) : body
 }
 
-const f32 = (a: number[]) => Float32Array.from(a)
+// JSON null (a masked cell) must become NaN: Float32Array.from would turn it into 0, a fake value.
+const f32 = (a: (number | null)[]) => Float32Array.from(a, (x) => (x == null ? NaN : x))
 const reviveField = (b: any): Field => ({ ...b, values: f32(b.values), u: b.u && f32(b.u), v: b.v && f32(b.v) })
 const q = (o: Record<string, string | number>) => new URLSearchParams(Object.entries(o).map(([k, v]) => [k, String(v)])).toString()
 

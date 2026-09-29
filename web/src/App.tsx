@@ -9,6 +9,7 @@ import Extremes from '@/screens/Extremes'
 import RunLog from '@/screens/RunLog'
 import Landing from '@/screens/Landing'
 import Data from '@/screens/Data'
+import { useDeskSync } from '@/lib/sync'
 
 const DESK = ['/forecast', '/weights', '/skill', '/extremes', '/runs']
 
@@ -19,6 +20,7 @@ function Shell() {
   // The map explorer owns the whole viewport, as on Ventusky: no page scroll.
   const full = pathname === '/forecast'
   useEffect(() => { window.scrollTo(0, 0) }, [pathname])
+  useDeskSync()
   return (
     <div className={full ? 'flex h-dvh flex-col pb-8' : 'flex min-h-dvh flex-col pb-8'}>
       <Masthead desk={desk} />

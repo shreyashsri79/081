@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Info } from 'lucide-react'
 import { useRun, useRuns, useSource } from '@/lib/api'
 import { useDesk } from '@/lib/store'
 import { MODELS } from '@/lib/models'
@@ -83,6 +84,7 @@ export function Masthead({ desk }: { desk: boolean }) {
 export function RunStrip() {
   const { run } = useDesk()
   const r = useRun(run).data
+  const [open, setOpen] = useState(false)
   if (!r) return <div className="h-10 border-b border-rule" />
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-rule bg-surface px-4 py-2 text-[12.5px] sm:px-6">
@@ -103,6 +105,19 @@ export function RunStrip() {
         ))}
       </span>
       <span className="mono text-ink-3">grid {r.grid.step}° · {r.grid.ny}×{r.grid.nx}</span>
+      {r.notes?.length ? (
+        <span className="relative ml-auto">
+          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+            className="flex items-center gap-1.5 border border-ink px-2 py-0.5 text-[12px] hover:bg-ink hover:text-paper">
+            <Info className="size-3.5" /> Notes ({r.notes.length})
+          </button>
+          {open && (
+            <ul className="frame raised absolute right-0 top-full z-50 mt-1 w-[min(92vw,520px)] bg-surface p-3 text-[12.5px] leading-snug">
+              {r.notes.map((n) => <li key={n} className="border-b border-rule/60 py-1.5 last:border-0">{n}</li>)}
+            </ul>
+          )}
+        </span>
+      ) : null}
     </div>
   )
 }
@@ -111,6 +126,9 @@ export function Disclosure() {
   const src = useSource().data
   const synthetic = src !== 'http'
   const facts = useLocation().pathname === '/data'
+  const { run } = useDesk()
+  const runs = useRuns().data ?? []
+  const note = useRun(run).data?.notes?.[0]
   return (
     <div role="note" className="fixed inset-x-0 bottom-0 z-50 flex h-8 items-center gap-3 overflow-hidden bg-ink px-4 text-paper sm:px-6">
       <span className={cn('shrink-0 mono text-[11px] font-medium tracking-wider', synthetic && !facts ? 'text-[#f0a58f]' : 'text-[#9fd3b6]')}>
@@ -121,7 +139,7 @@ export function Disclosure() {
           ? 'Facts on this page come from the WeatherBench 2 store check of 28 Sep 2026. Desk screens run on synthetic data until the engine is connected.'
           : synthetic
           ? 'No engine output yet. Every field, weight and score on screen is generated for interface development. It is not a forecast and not a result. Do not screenshot for the deck.'
-          : 'Serving blend/server.py output. Numbers are as measured by the engine.'}
+          : `measured · ${runs.length} run${runs.length === 1 ? '' : 's'} from blend/server.py${note ? ` · ${note}` : ''}`}
       </p>
     </div>
   )

@@ -278,7 +278,7 @@ export default function Forecast() {
   const layerKey = `${run}|${layer}|${fv}|${lead}|${member}|${!!mapLayer}|${v}`
 
   const cityValue = useMemo(() => {
-    if (isVar(layer) && field) return (k: number) => CITY_FMT[layer](field.values[k])
+    if (isVar(layer) && field) return (k: number) => (Number.isFinite(field.values[k]) ? CITY_FMT[layer](field.values[k]) : null)
     if (layer === 'dominant' && ws) return (k: number) => MODELS[ws.models[ws.dominant[k]]].short
     if (xm) return (k: number) => `${Math.round(xm.prob[k] * 100)}%`
     return undefined
@@ -330,6 +330,11 @@ export default function Forecast() {
           fly={fly}
           rightInset={drawer && cell && wide ? 440 : 0}
         >
+          {isExtreme(layer) && xmQ?.type === layer && xmQ.available === false && (
+            <div className={cn(glass, 'pointer-events-auto absolute left-1/2 top-16 z-10 max-w-[440px] -translate-x-1/2 border-warn bg-warn-bg px-3 py-2 text-[12.5px] text-warn')}>
+              {xmQ.note ?? 'Not available for this run.'}
+            </div>
+          )}
           {/* top-left: search + layers */}
           <div className="pointer-events-none absolute left-3 top-3 z-10 flex flex-col gap-2">
             <CitySearch />

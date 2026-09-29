@@ -14,8 +14,9 @@ export const mix = (c: RGB, t: number): RGB =>
 export function dominantPaint(ws: WeightSet) {
   const cols = ws.models.map((m) => hexToRgb(MODELS[m].colour))
   const n = ws.models.length
-  return (k: number): RGB => {
+  return (k: number): RGB | null => {
     const a = ws.dominant[k]
+    if (!Number.isFinite(ws.weights[a][k])) return null // masked cell
     const t = Math.min(1, ((ws.weights[a][k] - 1 / n) / (1 - 1 / n)) * 1.6 + 0.18)
     return mix(cols[a], t)
   }

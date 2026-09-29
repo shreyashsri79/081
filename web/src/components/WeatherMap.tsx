@@ -284,10 +284,11 @@ export default function WeatherMap(props: Props) {
     c.width = iw; c.height = ih
     const ctx = c.getContext('2d')!
     const img = ctx.createImageData(iw, ih)
-    const colour = (k: number, gi: number, gj: number): RGB | null =>
-      layer.kind === 'scalar'
-        ? sample(layer.scale, smoothOn ? bilinear(grid, layer.values, gi, gj) : layer.values[k])
-        : layer.paint(k)
+    const colour = (k: number, gi: number, gj: number): RGB | null => {
+      if (layer.kind === 'paint') return layer.paint(k)
+      const v = smoothOn ? bilinear(grid, layer.values, gi, gj) : layer.values[k]
+      return Number.isFinite(v) ? sample(layer.scale, v) : null // masked cell: leave blank, never the top colour
+    }
     for (let py = 0; py < ih; py++) {
       const lat = Minv(mB - ((py + (smoothOn ? 0 : 0.5)) / (smoothOn ? ih - 1 : ih)) * (mB - mA))
       const gi = (lat - grid.lat0) / grid.step
