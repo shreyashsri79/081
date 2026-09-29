@@ -7,17 +7,23 @@ interim extreme probabilities for one init date, written in display units for bl
 Uses only the existing blend/ science functions; nothing here changes how weights or scores are computed.
 """
 
+import argparse
+import datetime
 import os
+import subprocess
+import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+from . import bundle as B
 from . import config as C
 from . import verify as V
 from .cache import fc_path, load_forecasts, load_truth
 from .harmonise import prepare
-from .regimes import all_keys
+from .regimes import all_keys, label
 from .skill import apply_bias, fit_mse
 
 # UI variable id -> WB2 name
@@ -194,3 +200,248 @@ def region_scores(fc: xr.DataArray, obs: xr.DataArray, mode: str, rung: str, var
         delta, lo, hi = V.block_bootstrap(a, b)
         out.append({"var": var_ui, "name": n, "delta": delta, "ci": [lo, hi]})
     return out
+
+
+# ------------------------------------------------------------- run bundles (plan T6)
+
+EXTREMES = {"rain64": ("rain", 64.5), "rain115": ("rain", 115.6), "rain204": ("rain", 204.5), "wind15": ("wind", 15.0)}
+EXTREME_METHOD = "weighted vote of bias-corrected members (uncalibrated)"
+UI_ORDER = ["rain", "t2m", "wind", "mslp"]
+MODEL_ORDER = ["hres", "graphcast", "pangu", "fuxi", "gencast", "ifs", "aifs", "gfs"]
+REGIME_TEXT = {"normal": "Normal", "active": "Monsoon active", "break": "Monsoon break", "depression": "Depression",
+               "western_disturbance": "Western disturbance", "heat": "Heat"}
+HEAT_NOTE = ("Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon "
+             "(12 UTC) value.")
+UV_NOTE = "Wind particles unavailable: u/v components are not in the cache."
+
+
+class Context:
+    """Loads each model set and the truth once per export, shared by every run and scorecard."""
+
+    def __init__(self, cache: str, art: str | None):
+        self.cache, self.art = cache, art
+        self._fc, self._prep = {}, {}
+        self.truth = load_truth(cache)
+        self.labels = label(pd.read_csv(os.path.join(cache, "regime_indices.csv"), index_col=0, parse_dates=True),
+                            C.CLIM_YEARS)
+
+    def prepared(self, set_name: str, ui: str):
+        """(fc, obs) for one set and variable, or None if no model of the set has the variable."""
+        key = (set_name, ui)
+        if key not in self._prep:
+            if set_name not in self._fc:
+                s = C.SETS[set_name]
+                self._fc[set_name] = load_forecasts(self.cache, s["models"], s["years"])
+            fcs = {m: ds for m, ds in self._fc[set_name].items() if VAR_IDS[ui] in ds}
+            self._prep[key] = prepare(fcs, self.truth, VAR_IDS[ui], self.labels) if fcs else None
+        return self._prep[key]
+
+    def card(self, set_name: str) -> pd.DataFrame | None:
+        p = os.path.join(self.art, f"scorecard_{set_name}.csv") if self.art else None
+        return pd.read_csv(p) if p and os.path.exists(p) else None
+
+    def rung(self, set_name: str, ui: str) -> tuple[str, str]:
+        card = self.card(set_name)
+        if card is None or VAR_IDS[ui] not in set(card["var"]):
+            return "B2", f"scorecard_{set_name}.csv missing for {ui}: shipped B2 (cell x lead) by default"
+        return choose_rung(card, VAR_IDS[ui])
+
+
+def _grid(fc: xr.DataArray) -> dict:
+    lat, lon = fc.latitude.values, fc.longitude.values
+    assert np.all(np.diff(lat) > 0), "latitude must ascend (row 0 = south)"
+    step = float(np.round(lat[1] - lat[0], 6))
+    for axis in (lat, lon):
+        assert np.allclose(np.diff(axis), step), "grid spacing must be uniform"
+    return {"lat0": float(lat[0]), "lon0": float(lon[0]), "step": step, "ny": int(len(lat)), "nx": int(len(lon))}
+
+
+def _flat(da: xr.DataArray, dims) -> np.ndarray:
+    a = da.transpose(*dims).values
+    return a.reshape(*a.shape[:-2], -1).astype(np.float32)
+
+
+def _commit() -> str:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()
+    except Exception:
+        return "unknown"
+
+
+def build_run(ctx: Context, date, out_root: Path) -> Path:
+    """One hindcast bundle for init `date`: out-of-sample weights, blend, members, errors, interim extremes."""
+    date = pd.Timestamp(date).normalize()
+    run_id = f"hindcast-{date:%Y%m%d}"
+    steps, notes, arrays = [], [], {}
+    models_by_var, rungs, reasons, folds, sets_used, n_season, n_regime = {}, {}, {}, {}, {}, {}, {}
+    grid = season = key = None
+    sets = sets_for(date.year, ctx.cache)
+
+    for ui in UI_ORDER:
+        t0 = time.perf_counter()
+        set_name = sets[ui]
+        prep = ctx.prepared(set_name, ui)
+        if prep is None:
+            notes.append(f"{ui}: no model of {set_name} has this variable in the cache.")
+            steps.append({"name": f"{ui}: load {set_name}", "status": "skipped", "seconds": 0.0, "note": "not cached"})
+            continue
+        fc, obs = prep
+        if not (fc.init.values.astype("datetime64[ns]") == np.datetime64(date, "ns")).any():
+            notes.append(f"{ui}: {date.date()} is not a common init of {', '.join(map(str, fc.model.values))}.")
+            steps.append({"name": f"{ui}: load {set_name}", "status": "skipped", "seconds": 0.0, "note": "date missing"})
+            continue
+        mode = mode_of(set_name)
+        p = fit_for_date(fc, obs, date, mode)
+        rung, why = ctx.rung(set_name, ui)
+        steps.append({"name": f"fit {ui} on {set_name}, fold {p['fold']} held out", "status": "ok",
+                      "seconds": round(time.perf_counter() - t0, 2)})
+
+        t0 = time.perf_counter()
+        fcd = fc.sel(init=date)
+        season, key = str(fcd.season.values), str(fcd.regime_key.values)
+        # weights and the MSE table behind them, at this date's season / regime key
+        if rung == "B3":
+            w, mse = p["w_B3"].sel(regime_key=key), p["mse_B3"].sel(regime_key=key)
+        elif rung == "B3s":
+            w, mse = p["w_B3s"].sel(season=season), p["mse_B3s"].sel(season=season)
+        elif rung == "B2":
+            w, mse = p["w_B2"], p["mse_B2"]
+        else:  # B1: equal mean of the bias-corrected members
+            w, mse = xr.ones_like(p["w_B2"]) / fc.sizes["model"], p["mse_B2"]
+        bias = p["bias"].sel(season=season)
+        fc_bc = fcd - bias
+        blended = (fc_bc * w).sum("model", skipna=False)
+        dims4, dims3 = ("model", "lead", "latitude", "longitude"), ("lead", "latitude", "longitude")
+        f = diff_scale(ui)
+        arrays[f"fc_{ui}"] = _flat(to_display(ui, fcd), dims4)
+        arrays[f"blend_{ui}"] = _flat(to_display(ui, blended), dims3)
+        arrays[f"w_{ui}"] = _flat(w.transpose(*dims4), dims4)
+        arrays[f"mse_{ui}"] = _flat(mse * f * f, dims4)
+        arrays[f"bias_{ui}"] = _flat(bias * f, dims4)
+        arrays[f"obs_{ui}"] = _flat(to_display(ui, obs.sel(init=date)), dims3)
+        # interim extremes: weighted vote of bias-corrected members, NaN where any member is missing
+        members = to_display(ui, fc_bc)
+        for ex, (var, thr) in EXTREMES.items():
+            if var == ui:
+                vote = (members >= thr).astype(float).where(members.notnull())
+                arrays[f"p_{ex}"] = _flat((vote * w).sum("model", skipna=False).clip(0, 1), dims3)
+
+        g = _grid(fc)
+        assert grid is None or g == grid, "all variables must share one grid"
+        grid = g
+        models_by_var[ui] = [str(m) for m in fc.model.values]
+        rungs[ui], reasons[ui], sets_used[ui] = rung, why, set_name
+        folds[ui] = f"year {p['fold']}" if mode == "loyo" else f"month {p['fold'][1:]} ±{int(C.LEAD_DAYS.max())} days"
+        n_season[ui] = p["n_season"].get(season, 0)
+        n_regime[ui] = p.get("n_regime", {}).get(key, 0)
+        steps.append({"name": f"blend {ui} ({rung}) + extremes", "status": "ok",
+                      "seconds": round(time.perf_counter() - t0, 2)})
+
+    if not models_by_var:
+        raise ValueError(f"{date.date()}: no variable could be built")
+    vars_ = [v for v in UI_ORDER if v in models_by_var]
+    regime = str(ctx.labels["regime"].get(date, "normal")) if date in ctx.labels.index else "normal"
+    season = C.SEASON_OF_MONTH[date.month]
+    label_text = "Monsoon normal" if (regime == "normal" and season == "JJAS") else REGIME_TEXT[regime]
+    notes = [
+        "Rain truth: ERA5 reanalysis. CHIRPS verification is planned; ERA5 favours ERA5-like models.",
+        "Weights for this date are fitted without its " + "; ".join(sorted({f for f in folds.values()})) +
+        " (out-of-sample).",
+        "Rung per variable: " + ", ".join(f"{v} {rungs[v]}" for v in vars_) + ".",
+        f"Grid {grid['step']}° (~{round(grid['step'] * 111)} km); values are cell averages.",
+        HEAT_NOTE,
+        UV_NOTE,
+    ] + notes
+    meta = {
+        "id": run_id, "kind": "hindcast", "init": f"{date:%Y-%m-%d}T00:00Z",
+        "status": "ok" if len(vars_) == len(UI_ORDER) else "partial",
+        "models": [m for m in MODEL_ORDER if any(m in ms for ms in models_by_var.values())],
+        "grid": grid, "leads": [int(x) for x in C.LEAD_DAYS], "vars": vars_, "modelsByVar": models_by_var,
+        "regime": {"season": season, "label": label_text, "basis": "init"},
+        "rung": rungs.get("t2m", rungs[vars_[0]]),
+        "steps": steps, "provenance": "measured", "notes": notes,
+        "_x": {"sets": sets_used, "folds": folds, "rungs": rungs, "rungReason": reasons, "regimeKey": key,
+               "nSeason": n_season, "nRegime": n_regime, "k": C.K_SHRINK,
+               "thresholds": {k: v[1] for k, v in EXTREMES.items()}, "extremeMethod": EXTREME_METHOD,
+               "codeCommit": _commit(),
+               "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")},
+    }
+    t0 = time.perf_counter()
+    path = B.write_run(out_root, meta, arrays)
+    meta["steps"].append({"name": "write bundle", "status": "ok", "seconds": round(time.perf_counter() - t0, 2)})
+    B.write_meta(out_root, meta)
+    return path
+
+
+def build_scorecards(ctx: Context, set_names, out_root: Path) -> None:
+    """scorecards/<SET>.json for every set a run uses, with the regional breakdown at Day 3."""
+    for set_name in sorted(set(set_names)):
+        card = ctx.card(set_name)
+        if card is None:
+            continue
+        rungs, regions = {}, []
+        for ui in UI_ORDER:
+            if VAR_IDS[ui] not in set(card["var"]) or VAR_IDS[ui] not in C.SETS[set_name]["vars"]:
+                continue
+            rungs[ui] = ctx.rung(set_name, ui)[0]
+            prep = ctx.prepared(set_name, ui)
+            if prep is not None:
+                regions += region_scores(*prep, mode_of(set_name), rungs[ui], ui)
+        B.write_scorecard(out_root, set_name, scorecard_json(set_name, card, rungs, regions))
+
+
+def auto_dates(ctx: Context, cap: int = 12) -> list[pd.Timestamp]:
+    """First init of each regime (≥ 3 days that year) per forecast year in the cache, plus 2020-07-15."""
+    have = {}
+    for y in C.SETS["S1"]["years"]:
+        files = [fc_path(ctx.cache, m, y) for m in C.SETS["S1"]["models"]]
+        if all(os.path.exists(f) for f in files):
+            inits = None
+            for f in files:
+                with xr.open_dataset(f) as ds:
+                    t = set(pd.DatetimeIndex(ds.init.values).normalize())
+                inits = t if inits is None else inits & t
+            have[y] = inits
+    picks = []
+    if pd.Timestamp("2020-07-15") in have.get(2020, set()):
+        picks.append(pd.Timestamp("2020-07-15"))
+    lab = ctx.labels
+    for y, inits in sorted(have.items()):
+        ly = lab[lab.index.year == y]
+        for reg, n in ly.regime.value_counts().items():
+            if n < 3:
+                continue
+            days = sorted(d for d in ly.index[ly.regime == reg] if d in inits)
+            if days and days[0] not in picks:
+                picks.append(days[0])
+    return picks[:cap]
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Write hindcast run bundles for blend/server.py")
+    ap.add_argument("--cache", required=True, help="run_all.py cache/ directory")
+    ap.add_argument("--art", default=None, help="run_all.py artifacts/ directory (scorecards)")
+    ap.add_argument("--out", default="bundles")
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--dates", nargs="+", help="init dates, YYYY-MM-DD")
+    g.add_argument("--auto", action="store_true", help="one date per regime and year, plus 2020-07-15")
+    a = ap.parse_args(argv)
+
+    ctx = Context(a.cache, a.art)
+    out = Path(a.out)
+    dates = auto_dates(ctx) if a.auto else [pd.Timestamp(d) for d in a.dates]
+    used = set()
+    for d in dates:
+        try:
+            path = build_run(ctx, d, out)
+            used |= set(B.read_meta(out, path.name)["_x"]["sets"].values())
+            print(f"wrote {path}")
+        except (KeyError, ValueError) as e:
+            print(f"skip {pd.Timestamp(d).date()}: {e}")
+    build_scorecards(ctx, used, out)
+    idx = B.write_index(out)
+    print(f"{len(idx['runs'])} runs in {out / 'index.json'}")
+
+
+if __name__ == "__main__":
+    main()

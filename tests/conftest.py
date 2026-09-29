@@ -95,3 +95,38 @@ def write_cache(cache, models=MODELS, years=YEARS, months=(7,), days=30):
 @pytest.fixture
 def fake_cache(tmp_path):
     return write_cache(tmp_path / "cache")
+
+
+def write_artifacts(cache, art, sets=("S1", "S2"), n_boot=50):
+    """scorecard_<SET>.csv made by the real verify pipeline on the fake cache (as run_all.train does)."""
+    from blend import verify as V
+    from blend.cache import load_forecasts, load_truth
+    from blend.harmonise import prepare
+    from blend.regimes import label
+
+    art.mkdir(parents=True, exist_ok=True)
+    labels = label(pd.read_csv(cache / "regime_indices.csv", index_col=0, parse_dates=True), C.CLIM_YEARS)
+    truth = load_truth(str(cache))
+    for s in sets:
+        spec = C.SETS[s]
+        fcs = load_forecasts(str(cache), spec["models"], spec["years"])
+        cards = []
+        for var in spec["vars"]:
+            have = {m: ds for m, ds in fcs.items() if var in ds}
+            fc, obs = prepare(have, truth, var, labels)
+            se, _, _ = V.run_folds(fc, obs, "loyo")
+            cards.append(V.scorecard(se, var, s, n_boot=n_boot))
+        pd.concat(cards, ignore_index=True).to_csv(art / f"scorecard_{s}.csv", index=False)
+    return art
+
+
+@pytest.fixture(scope="session")
+def bundle_root(tmp_path_factory):
+    """A bundles/ directory with one real-format run (2020-07-15) and its scorecards, built by blend.export."""
+    from blend import export as E
+
+    base = tmp_path_factory.mktemp("bundle")
+    cache = write_cache(base / "cache")
+    art = write_artifacts(cache, base / "artifacts")
+    E.main(["--cache", str(cache), "--art", str(art), "--out", str(base / "bundles"), "--dates", "2020-07-15"])
+    return base / "bundles"

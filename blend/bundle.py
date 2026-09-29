@@ -59,6 +59,11 @@ def write_run(root: Path, meta: dict, arrays: dict[str, np.ndarray]) -> Path:
     return final
 
 
+def write_meta(root: Path, meta: dict) -> None:
+    """Replace meta.json of an existing run (atomic), e.g. to add the timing of the write itself."""
+    _write_json(Path(root) / "runs" / meta["id"] / "meta.json", meta)
+
+
 def read_meta(root: Path, run_id: str) -> dict:
     return json.loads((Path(root) / "runs" / run_id / "meta.json").read_text())
 
