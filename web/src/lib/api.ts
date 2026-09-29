@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { EXTREMES } from './models'
 import type { CellReport, ExtremeId, ExtremeMap, Field, Meteogram, ModelId, Run, RunSummary, Scorecard, VarId, WeightSet } from './contract'
 // The synthetic source is only needed when no engine answers: load it on demand, outside the main bundle.
 type Synth = typeof import('./synthetic')
@@ -68,8 +69,8 @@ export const useModelField = (run: string, m: ModelId | null, v: VarId, lead: nu
 export const useWeights = (run: string, v: VarId, lead: number) =>
   useQuery({ queryKey: ['weights', run, v, lead], queryFn: () => api.weights(run, v, lead), placeholderData: keep })
 export const useScorecard = (run: string) => useQuery({ queryKey: ['scorecard', run], queryFn: () => api.scorecard(run) })
-export const useExtremes = (run: string, t: ExtremeId, lead: number) =>
-  useQuery({ queryKey: ['extremes', run, t, lead], queryFn: () => api.extremes(run, t, lead), placeholderData: keep })
+export const useExtremes = (run: string, t: ExtremeId | undefined, lead: number) =>
+  useQuery({ queryKey: ['extremes', run, t, lead], queryFn: () => api.extremes(run, t!, lead), enabled: !!t, placeholderData: keep })
 export const useCell = (run: string, v: VarId, lead: number, cell: [number, number] | null) =>
   useQuery({
     queryKey: ['cell', run, v, lead, cell?.[0], cell?.[1]],
@@ -123,4 +124,14 @@ export function useProvenance(run: string): 'local' | 'demo' | 'measured' | unde
 export function useStamp(run: string, local = 'SYNTHETIC DATA'): string | null {
   const p = useProvenance(run)
   return p === 'measured' || p === undefined ? null : p === 'demo' ? 'DEMO DATA' : local
+}
+
+export interface EventInfo { id: string; var: VarId; name: string; short: string; threshold: string; available: boolean; note?: string }
+
+/** Extreme events of a run: the engine lists its own (calibrated p95 / p99 ...); the synthetic source uses EXTREMES. */
+const SYNTH_EVENTS: EventInfo[] = Object.entries(EXTREMES).map(([id, e]) =>
+  ({ id, var: e.var, name: e.name, short: e.short, threshold: e.threshold, available: true }))
+export function useEvents(run: string): EventInfo[] {
+  const r = useRun(run).data
+  return r?.extremes?.length ? r.extremes : SYNTH_EVENTS
 }

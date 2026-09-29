@@ -1,12 +1,8 @@
 import WeatherMap from '@/components/WeatherMap'
 import { LeadSlider, Legend, Panel } from '@/components/Controls'
-import { useExtremes, useRun, useStamp } from '@/lib/api'
+import { useEvents, useExtremes, useRun, useStamp } from '@/lib/api'
 import { PROB, css, sample } from '@/lib/colour'
-import type { ExtremeId } from '@/lib/contract'
-import { EXTREMES } from '@/lib/models'
 import { useDesk } from '@/lib/store'
-
-const TYPES: ExtremeId[] = ['rain64', 'rain115', 'rain204', 'heat', 'wind15']
 
 /**
  * Outcome 4: extremes as probabilities, never read off the blended mean
@@ -15,19 +11,21 @@ const TYPES: ExtremeId[] = ['rain64', 'rain115', 'rain204', 'heat', 'wind15']
 export default function Extremes() {
   const { run, lead, cell, extreme, set } = useDesk()
   const r = useRun(run).data
-  const x = useExtremes(run, extreme, lead).data
   const stamp = useStamp(run)
-  const offSeason = r && ((extreme === 'heat' && r.regime.season !== 'MAM') || (extreme.startsWith('rain') && r.regime.season === 'MAM'))
+  const events = useEvents(run)
+  const ev = events.find((e) => e.id === extreme) ?? events[0]
+  const x = useExtremes(run, ev?.id, lead).data
+  const offSeason = r && ev && ((ev.var === 't2m' && r.regime.season !== 'MAM') || (ev.var === 'rain' && r.regime.season === 'MAM'))
 
   return (
     <div className="grid gap-3 p-3 sm:p-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <Panel
-        label={`${EXTREMES[extreme].name} · probability`}
+        label={`${ev?.name ?? 'Extreme'} · probability`}
         right={
           <div className="seg flex-wrap" role="group" aria-label="Indicator">
-            {TYPES.map((t) => (
-              <button key={t} type="button" aria-pressed={extreme === t} onClick={() => set({ extreme: t })} title={EXTREMES[t].threshold}>
-                {EXTREMES[t].short}
+            {events.map((e) => (
+              <button key={e.id} type="button" aria-pressed={extreme === e.id} onClick={() => set({ extreme: e.id })} title={e.threshold}>
+                {e.short}
               </button>
             ))}
           </div>
@@ -35,11 +33,12 @@ export default function Extremes() {
       >
         <div className="flex flex-col gap-3 p-3">
           <div className="flex flex-wrap items-baseline gap-x-3 text-[12.5px]">
-            <span className="mono">{EXTREMES[extreme].threshold}</span>
+            <span className="mono">{ev?.threshold}</span>
             <span className="text-ink-3">
               {x?.method ? `${x.method[0].toUpperCase()}${x.method.slice(1)}.` : 'Weighted exceedance of members (illustrative).'} Not thresholded from the blend mean.
             </span>
             {x?.calibrated === false && <span className="border border-warn px-1.5 py-0.5 mono text-[10.5px] text-warn">UNCALIBRATED</span>}
+            {x?.calibrated && <span className="border border-good px-1.5 py-0.5 mono text-[10.5px] text-good">CALIBRATED</span>}
           </div>
           {x?.available === false && (
             <p className="border border-warn bg-warn-bg px-3 py-1.5 text-[12.5px] text-warn">{x.note ?? 'Not available for this run.'}</p>

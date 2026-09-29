@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ChevronDown, CloudRain, Gauge, Layers, LineChart, Pause, Play, Search, Thermometer, Wind, X } from 'lucide-react'
 import WeatherMap, { type MapLayer } from '@/components/WeatherMap'
 import Meteogram from '@/components/Meteogram'
-import { useExtremes, useField, useModelField, usePrefetchLeads, useRun, useStamp, useWeights } from '@/lib/api'
+import { useEvents, useExtremes, useField, useModelField, usePrefetchLeads, useRun, useStamp, useWeights } from '@/lib/api'
 import { PROB, SCALES, css, sample, type Scale } from '@/lib/colour'
 import { CITIES } from '@/lib/cities'
 import type { ExtremeId, VarId } from '@/lib/contract'
-import { EXTREMES, MODELS, VARS } from '@/lib/models'
+import { MODELS, VARS } from '@/lib/models'
 import { dominantPaint } from '@/lib/paint'
 import { useDesk, type MapLayerId } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -28,18 +28,15 @@ const GROUPS: { title: string; items: { id: MapLayerId; label: string; icon: typ
     ],
   },
   { title: 'Blend weights', items: [{ id: 'dominant', label: 'Most-trusted model', icon: Layers }] },
-  {
-    title: 'Extremes',
-    items: [
-      { id: 'rain64', label: 'Heavy rain', icon: AlertTriangle },
-      { id: 'rain115', label: 'Very heavy rain', icon: AlertTriangle },
-      { id: 'heat', label: 'Heat wave', icon: AlertTriangle },
-      { id: 'wind15', label: 'High wind', icon: AlertTriangle },
-    ],
-  },
 ]
+/** The layer list: fixed forecast and weight layers, plus whatever extreme events the run provides. */
+function useGroups() {
+  const { run } = useDesk()
+  const events = useEvents(run)
+  return [...GROUPS, { title: 'Extremes', items: events.map((e) => ({ id: e.id as MapLayerId, label: e.name, icon: AlertTriangle })) }]
+}
 const isVar = (l: MapLayerId): l is VarId => l === 'rain' || l === 't2m' || l === 'wind' || l === 'mslp'
-const isExtreme = (l: MapLayerId): l is ExtremeId => l in EXTREMES
+const isExtreme = (l: MapLayerId): l is ExtremeId => !isVar(l) && l !== 'dominant'
 
 const CITY_FMT: Record<VarId, (v: number) => string> = {
   rain: (v) => (v < 0.5 ? '0' : v.toFixed(0)),
@@ -52,6 +49,7 @@ const glass = 'frame bg-surface/95 raised backdrop-blur-sm'
 
 function LayerRail() {
   const { layer, set } = useDesk()
+  const groups = useGroups()
   const [open, setOpen] = useState(true)
   return (
     <div className={cn(glass, 'pointer-events-auto flex w-[210px] flex-col')}>
@@ -59,7 +57,7 @@ function LayerRail() {
         <span className="label">Layers</span>
         <ChevronDown className={cn('size-4 transition-transform', !open && '-rotate-90')} />
       </button>
-      {open && GROUPS.map((g) => (
+      {open && groups.map((g) => (
         <div key={g.title} className="border-b border-rule/70 py-1 last:border-0">
           <div className="px-3 pb-0.5 pt-1.5 text-[10.5px] font-medium uppercase tracking-wider text-ink-3">{g.title}</div>
           {g.items.map((it) => (
@@ -77,9 +75,10 @@ function LayerRail() {
 
 function MobileLayers() {
   const { layer, set } = useDesk()
+  const groups = useGroups()
   return (
     <div className={cn(glass, 'pointer-events-auto flex max-w-full overflow-x-auto scroll-thin')}>
-      {GROUPS.flatMap((g) => g.items).map((it) => (
+      {groups.flatMap((g) => g.items).map((it) => (
         <button key={it.id} type="button" aria-pressed={layer === it.id}
           onClick={() => set({ layer: it.id, ...(isVar(it.id) ? { v: it.id } : {}), ...(isExtreme(it.id) ? { extreme: it.id } : {}) })}
           className={cn('flex shrink-0 items-center gap-1.5 whitespace-nowrap border-r border-rule px-2.5 py-2 text-[12.5px]', layer === it.id && 'bg-ink text-paper')}>
@@ -251,7 +250,7 @@ function useWide() {
 }
 
 export default function Forecast() {
-  const { run, v, lead, cell, member, layer, extreme, overlays, drawer, fly, set } = useDesk()
+  const { run, v, lead, cell, member, layer, overlays, drawer, fly, set } = useDesk()
   const wide = useWide()
   const r = useRun(run).data
   const stamp = useStamp(run)
@@ -260,15 +259,18 @@ export default function Forecast() {
   const raw = useModelField(run, isVar(layer) ? member : null, fv, lead).data
   const windF = useField(run, 'wind', lead).data
   const mslpF = useField(run, 'mslp', lead).data
+  const events = useEvents(run)
+  // only ask for an event this run lists (the selection is re-pointed by useDeskSync when the run changes)
+  const evId = isExtreme(layer) && events.some((e) => e.id === layer) ? layer : undefined
   usePrefetchLeads(run, lead, {
     field: isVar(layer) && !member ? layer : undefined,
     wind: overlays.particles,
     weights: layer === 'dominant' ? v : undefined,
-    extreme: isExtreme(layer) ? layer : undefined,
+    extreme: evId,
   })
   const wsQ = useWeights(run, v, lead).data
   const ws = wsQ?.var === v ? wsQ : undefined
-  const xmQ = useExtremes(run, isExtreme(layer) ? layer : extreme, lead).data
+  const xmQ = useExtremes(run, evId, lead).data
   const xm = xmQ && isExtreme(layer) && xmQ.type === layer ? xmQ : undefined
 
   // Placeholder data from the previous query is kept while loading: only use it if it is the right variable.
@@ -313,7 +315,7 @@ export default function Forecast() {
     ? <MapLegend scale={SCALES[layer]} units={VARS[layer].units} format={(x) => (layer === 'rain' && x === 0 ? '0' : String(x))} />
     : layer === 'dominant'
       ? <DominantLegend models={ws?.models ?? []} />
-      : <MapLegend scale={PROB} units={EXTREMES[layer].threshold} format={(x) => `${Math.round(x * 100)}`} />
+      : <MapLegend scale={PROB} units="probability" format={(x) => `${Math.round(x * 100)}`} />
 
   return (
     <div className="relative h-full min-h-[560px]">

@@ -16,7 +16,8 @@
 
 export type ModelId = 'hres' | 'graphcast' | 'pangu' | 'fuxi' | 'gencast' | 'ifs' | 'aifs' | 'gfs'
 export type VarId = 'rain' | 't2m' | 'wind' | 'mslp'
-export type ExtremeId = 'rain64' | 'rain115' | 'rain204' | 'heat' | 'wind15'
+/** Engine runs name their events (Run.extremes, e.g. 'rain_p95'); the synthetic source uses lib/models EXTREMES. */
+export type ExtremeId = string
 export type Season = 'JF' | 'MAM' | 'JJAS' | 'OND'
 export type Rung = 'B0' | 'B1' | 'B2' | 'B2c' | 'B3s' | 'B3' | 'B3c' | 'B4'
 
@@ -68,6 +69,8 @@ export interface Run extends RunSummary {
   provenance: 'synthetic' | 'measured'
   /** Honesty notes from the exporter: truth used, out-of-sample fold, rung per variable, gaps. */
   notes?: string[]
+  /** Extreme events this run provides (ids for /api/extremes); absent in the synthetic source. */
+  extremes?: { id: string; var: VarId; name: string; short: string; threshold: string; available: boolean; note?: string }[]
 }
 
 export interface Field {

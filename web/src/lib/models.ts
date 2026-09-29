@@ -39,6 +39,7 @@ export const VARS: Record<VarId, VarInfo> = {
   mslp: { id: 'mslp', name: 'Mean sea-level pressure', short: 'MSLP', units: 'hPa', digits: 1 },
 }
 
+/** Events of the synthetic source; engine runs carry their own list (Run.extremes). */
 export const EXTREMES: Record<ExtremeId, { name: string; short: string; threshold: string; var: VarId }> = {
   rain64: { name: 'Heavy rain', short: 'Heavy', threshold: '≥ 64.5 mm / 24 h', var: 'rain' },
   rain115: { name: 'Very heavy rain', short: 'Very heavy', threshold: '≥ 115.6 mm / 24 h', var: 'rain' },
