@@ -115,12 +115,12 @@ function Hero() {
                 { v: 5, l: 'models, physics + AI' },
                 { v: 4, l: 'variables' },
                 { v: 10, l: 'lead days' },
-                { v: 64.5, d: 1, l: 'mm heavy-rain line' },
+                { v: 7, l: 'extreme-event layers' },
                 { v: 3, l: 'years left out, in turn' },
               ].map((x, k) => (
                 <div key={x.l}>
                   <dt className="sr-only">{x.l}</dt>
-                  <dd><NumberTicker value={x.v} digits={x.d ?? 0} delay={0.6 + k * 0.08} className="text-[28px] font-medium leading-none tracking-tight" /></dd>
+                  <dd><NumberTicker value={x.v} digits={0} delay={0.6 + k * 0.08} className="text-[28px] font-medium leading-none tracking-tight" /></dd>
                   <div className="mt-1 text-[11.5px] leading-snug text-ink-2">{x.l}</div>
                 </div>
               ))}
@@ -333,7 +333,7 @@ function MiniMap({ kind }: { kind: 'blend' | 'prob' }) {
   const RUN = useLandingRun()
   const r = useRun(RUN).data
   const f = useField(RUN, 'rain', 3).data
-  const x = useExtremes(RUN, 'rain64', 3).data
+  const x = useExtremes(RUN, 'rain_p95', 3).data
   const paint = useMemo(() => (k: number) =>
     kind === 'blend'
       ? (f && Number.isFinite(f.values[k]) ? sample(SCALES.rain, f.values[k]) : null)
@@ -341,12 +341,12 @@ function MiniMap({ kind }: { kind: 'blend' | 'prob' }) {
   return (
     <div className="frame bg-surface p-3">
       <div className="mb-1 flex items-center justify-between">
-        <span className="label">{kind === 'blend' ? 'Blended 24 h rain · Day 3' : 'P(rain ≥ 64.5 mm) · Day 3'}</span><Stamp />
+        <span className="label">{kind === 'blend' ? 'Blended 24 h rain · Day 3' : 'P(heavy rain, top 5 %) · Day 3'}</span><Stamp />
       </div>
       <div className="aspect-[1.02] w-full lg:aspect-auto lg:h-[min(56vh,520px)]">
         {r && (f || x) && (
           <MapPlate grid={r.grid} paint={paint} version={`mini|${kind}|${!!f}|${!!x}`} selected={null} onSelect={() => {}}
-            readout={(k) => <div className="mono text-[12.5px]">{kind === 'blend' ? `${f?.values[k].toFixed(1)} mm` : `${Math.round((x?.prob[k] ?? 0) * 100)}%`}</div>} />
+            readout={(k) => <div className="mono text-[12.5px]">{kind === 'blend' ? `${f?.values[k].toFixed(1)} mm` : (Number.isFinite(x?.prob[k]) ? `${Math.round((x?.prob[k] ?? 0) * 100)}%` : '—')}</div>} />
         )}
       </div>
     </div>

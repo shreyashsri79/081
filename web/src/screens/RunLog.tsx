@@ -46,7 +46,7 @@ export default function RunLog() {
             ))}
           </tbody>
         </table>
-        <p className="px-3 py-2 text-[11.5px] text-ink-3">Live runs: 06:00 IST daily from NOAA GFS and ECMWF open data (IFS, AIFS). Hindcasts: WeatherBench 2.</p>
+        <p className="px-3 py-2 text-[11.5px] text-ink-3">Live runs: 15:00 IST daily (GitHub Actions) from ECMWF open data (IFS, AIFS) and NOAA GFS; each checks the earlier live forecasts against the analysis. Hindcasts: WeatherBench 2.</p>
       </Panel>
       <Panel label={r ? `Steps · ${r.id}` : 'Steps'}>
         {r && (

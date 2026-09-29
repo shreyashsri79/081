@@ -143,7 +143,7 @@ export default function Data() {
       <section className="grid gap-8 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           <Head eyebrow="The daily run" title="Live models are not the training models">
-            The weights are learned on WeatherBench 2 hindcasts; the 06:00 IST run uses what is openly served every day. Stated
+            The weights are learned on WeatherBench 2 hindcasts; the daily 15:00 IST run uses what is openly served every day. Stated
             plainly, because a judge will ask.
           </Head>
           <Table head={['Live source', 'Training counterpart', 'Weight at start']}>

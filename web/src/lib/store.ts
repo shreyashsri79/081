@@ -30,15 +30,18 @@ interface Desk {
 /** First selected point: 20.0° N, 74.0° E, the Western Ghats edge, where the weights are most interesting. */
 export const START = { lat: 20.0, lon: 74.0 }
 
+/** `?run=live-20260929` in the URL opens that run (handy for demos); otherwise the monsoon hindcast. */
+const urlRun = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('run') : null
+
 export const useDesk = create<Desk>((set) => ({
-  run: 'hindcast-20200715',
+  run: urlRun ?? 'hindcast-20200715',
   v: 'rain',
   lead: 3,
   cell: null,
   grid: null,
   weightView: 'dominant',
   member: null,
-  extreme: 'rain64',
+  extreme: 'rain_p95',
   layer: 'rain',
   overlays: { particles: true, isobars: false, cities: true, smooth: true, basemap: true },
   // Open beside the map on wide screens; on a phone it would cover the map, so start closed.

@@ -56,11 +56,11 @@ export default function Extremes() {
                 layer={{ kind: 'scalar', values: x.prob, scale: PROB }}
                 layerKey={`${run}|${extreme}|${lead}`}
                 cities
-                cityValue={(k) => `${Math.round(x.prob[k] * 100)}%`}
+                cityValue={(k) => (Number.isFinite(x.prob[k]) ? `${Math.round(x.prob[k] * 100)}%` : '—')}
                 selected={cell}
                 onSelect={(c) => set({ cell: c })}
                 stamp={stamp ?? undefined}
-                readout={(k) => <div className="mono text-[13px] font-medium">p = {(x.prob[k] * 100).toFixed(0)}%</div>}
+                readout={(k) => <div className="mono text-[13px] font-medium">{Number.isFinite(x.prob[k]) ? `p = ${(x.prob[k] * 100).toFixed(0)}%` : 'no truth here (sea)'}</div>}
               />
             )}
           </div>

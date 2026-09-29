@@ -99,8 +99,14 @@ export default function Weights() {
           {rep ? (
             <div className="flex flex-col gap-3 p-3 text-[13px]">
               <div className="frame bg-paper px-3 py-2 mono text-[12px] leading-relaxed">
-                w<sub>m</sub> = (1 / MSE<sub>m</sub>) / Σ<sub>k</sub> (1 / MSE<sub>k</sub>)
-                <div className="font-sans text-[11.5px] text-ink-3">MSE after bias correction, for this cell, lead, season and regime (rung {r?.rung})</div>
+                {r && ['B2c', 'B3c', 'B4'].includes(r.rung)
+                  ? <>w = argmin<sub>w</sub> wᵀΣw, w ≥ 0, Σ<sub>m</sub> w<sub>m</sub> = 1</>
+                  : <>w<sub>m</sub> = (1 / MSE<sub>m</sub>) / Σ<sub>k</sub> (1 / MSE<sub>k</sub>)</>}
+                <div className="font-sans text-[11.5px] text-ink-3">
+                  {r && ['B2c', 'B3c', 'B4'].includes(r.rung)
+                    ? <>Σ = error covariance between models after bias correction, for this cell and lead: models that make the same mistakes are not double-counted (rung {r.rung})</>
+                    : <>MSE after bias correction, for this cell, lead, season and regime (rung {r?.rung})</>}
+                </div>
               </div>
               <table className="w-full text-[12.5px]">
                 <thead>
@@ -124,12 +130,21 @@ export default function Weights() {
                   ))}
                 </tbody>
               </table>
-              <p className="text-[12px] text-ink-2">
-                Regime MSE from <span className="mono">{rep.nRegime}</span> cases, shrunk toward the season value
-                (<span className="mono">{rep.nSeason}</span> cases) with k = <span className="mono">{rep.k}</span>:
-                <span className="mono"> MSE = (n·MSE<sub>regime</sub> + k·MSE<sub>season</sub>) / (n + k)</span>.
-                {rep.nRegime < rep.k && <span className="text-warn"> Few regime cases: weights lean on the season.</span>}
-              </p>
+              {r?.kind === 'live' ? (
+                <p className="text-[12px] text-ink-2">
+                  Live run: the prior is each model&apos;s training counterpart (IFS ← HRES, AIFS ← GraphCast, GFS ← HRES
+                  with 1.5× error). As earlier live forecasts are checked against the analysis, their own errors take over:
+                  <span className="mono"> Σ = (n·Σ<sub>online</sub> + k·Σ<sub>prior</sub>) / (n + k)</span>, k = <span className="mono">{rep.k}</span> days (B4).
+                  MSE and bias above are the values in use.
+                </p>
+              ) : (
+                <p className="text-[12px] text-ink-2">
+                  Regime MSE from <span className="mono">{rep.nRegime}</span> cases, shrunk toward the season value
+                  (<span className="mono">{rep.nSeason}</span> cases) with k = <span className="mono">{rep.k}</span>:
+                  <span className="mono"> MSE = (n·MSE<sub>regime</sub> + k·MSE<sub>season</sub>) / (n + k)</span>.
+                  {rep.nRegime < rep.k && <span className="text-warn"> Few regime cases: weights lean on the season.</span>}
+                </p>
+              )}
             </div>
           ) : <p className="p-4 text-[13px] text-ink-3">Click a cell on the map.</p>}
         </Panel>

@@ -288,7 +288,7 @@ export default function Forecast() {
   const cityValue = useMemo(() => {
     if (isVar(layer) && field) return (k: number) => (Number.isFinite(field.values[k]) ? CITY_FMT[layer](field.values[k]) : null)
     if (layer === 'dominant' && ws) return (k: number) => MODELS[ws.models[ws.dominant[k]]].short
-    if (xm) return (k: number) => `${Math.round(xm.prob[k] * 100)}%`
+    if (xm) return (k: number) => (Number.isFinite(xm.prob[k]) ? `${Math.round(xm.prob[k] * 100)}%` : '—')
     return undefined
   }, [layer, field, ws, xm])
 
@@ -307,7 +307,7 @@ export default function Forecast() {
           ))}
         </div>
       )
-    if (xm) return <div className="mono text-[14px] font-medium">p = {Math.round(xm.prob[k] * 100)}%</div>
+    if (xm) return <div className="mono text-[14px] font-medium">{Number.isFinite(xm.prob[k]) ? `p = ${Math.round(xm.prob[k] * 100)}%` : 'no truth here (sea)'}</div>
     return null
   }
 
