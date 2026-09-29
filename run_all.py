@@ -26,6 +26,7 @@ import xarray as xr
 
 from blend import config as C
 from blend import products as P
+from blend import extremes as E
 from blend import verify as V
 from blend.cache import (chirps_path, fc_files, fc_path, load_forecasts, load_truth as load_truth_cache,
                          truth_path, variables_in)
@@ -130,13 +131,13 @@ def regime_report(labels, years, art):
     return counts
 
 
-def train(set_name, models, years, variables, cache, art, clim_years):
+def train(set_name, models, years, variables, cache, art, clim_years, extremes=True):
     os.makedirs(f"{art}/figures", exist_ok=True)
     mode = "loyo" if len(years) > 1 else "months"
     forecasts, truth = load_forecasts(cache, models, years), load_truth_cache(cache)
     labels = label(pd.read_csv(regimes_path(cache), index_col=0, parse_dates=True), clim_years)
     regime_report(labels, years, art)
-    cards, rcards, lines = [], [], []
+    cards, rcards, ecards, lines = [], [], [], []
     for var in variables:
         tag = var.replace("_", "")
         fc, obs = prepare(forecasts, truth, var, labels)
@@ -145,6 +146,13 @@ def train(set_name, models, years, variables, cache, art, clim_years):
         card = V.scorecard(se, var, set_name)
         cards.append(card)
         rcards.append(V.regime_scorecard(se, var, set_name, lead_day=3))
+        if extremes and E.EVENTS.get(var):
+            ext, keep = E.run(fc, obs, mode, var, set_name)
+            ecards.append(ext)
+            P.extremes_figures(ext, keep, var, fc.latitude.values, fc.longitude.values, 2, art, tag)
+            e0 = ext[(ext.lead_day == 3) & (ext.method == "prob>=p*")].iloc[0]
+            lines.append(f"[extremes] {var} {e0.event} Day-3: BSS vs climatology {e0.BSS_vs_clim:+.3f}, "
+                         f"vs best single model {e0.BSS_vs_best_model:+.3f}; CSI {e0.CSI:.3f}")
         for ref in ["B0", "B0bc"]:
             lines.append(f"[vs {ref}] " + V.headline(card, var, lead_day=3, ref=ref))
         b3 = card[(card["var"] == var) & (card.lead_day == 3) & (card.rung.isin(["B2", "B3"]))].set_index("rung").rmse
@@ -173,6 +181,13 @@ def train(set_name, models, years, variables, cache, art, clim_years):
     card.to_csv(f"{art}/scorecard_{set_name}.csv", index=False)
     rcard = pd.concat(rcards, ignore_index=True)
     rcard.to_csv(f"{art}/scorecard_by_regime_{set_name}.csv", index=False)
+    if ecards:
+        ecard = pd.concat(ecards, ignore_index=True)
+        ecard.to_csv(f"{art}/extremes_{set_name}.csv", index=False)
+        cols = ["var", "event", "method", "base_rate", "BSS_vs_clim", "BSS_vs_best_model", "POD", "FAR", "CSI",
+                "freq_bias", "n_events"]
+        print("\nExtremes, Day 3, held-out (prob>=p* = our probability product; BSS > 0 = better):")
+        print(ecard[ecard.lead_day == 3][cols].round(3).to_string(index=False))
     print("\nDay-3 RMSE by init-day regime (B3 vs B2 = value of regime conditioning):")
     print(rcard.round(3).to_string(index=False))
     lines.append(f"Set {set_name}: {', '.join(models)}; {mode} over {years}; 1.5 deg India box; 00 UTC; truth ERA5"
@@ -204,6 +219,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=4, help="files downloaded in parallel")
     ap.add_argument("--max-inits", type=int, default=None, help="small number for a quick test")
     ap.add_argument("--skip-download", action="store_true")
+    ap.add_argument("--no-extremes", action="store_true", help="skip the extreme-event probabilities")
     ap.add_argument("--clim-years", nargs=2, type=int, default=list(C.CLIM_YEARS),
                     help="regime climatology years; must not include a test year")
     a = ap.parse_args()
@@ -216,7 +232,7 @@ def main():
     if not a.skip_download:
         download(s["models"], s["years"], variables, cache, a.jobs, a.max_inits, a.clim_years)
     assert not set(range(a.clim_years[0], a.clim_years[1] + 1)) & set(s["years"]), "climatology overlaps test years"
-    train(a.set, s["models"], s["years"], variables, cache, art, a.clim_years)
+    train(a.set, s["models"], s["years"], variables, cache, art, a.clim_years, not a.no_extremes)
 
 
 if __name__ == "__main__":
