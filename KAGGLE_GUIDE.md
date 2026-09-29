@@ -150,3 +150,26 @@ alone, and judges will ask.
 1. Add `C.MSLP` to `VARIABLES` in 01 and 03.
 2. Rain (set S2): CHIRPS truth loader, then rain in the same notebooks.
 3. Regime labels (B3 proper), online update (B4), extremes. See `MODEL_SPEC_81.md` §15.
+
+## Dashboard bundles (for `blend/server.py`)
+
+Same fast-path notebook, two runs in one cell so both scorecards land in the same `artifacts/`, and the second run
+writes the bundles (BACKEND_BUILD_PLAN.md T11):
+
+```
+!git clone -q https://github.com/shreyashsri79/081 && cd 081 && pip install -q gcsfs "zarr>=2.18,<3" fastapi pydantic && \
+ python run_all.py --set S1 --vars t2m wind mslp && \
+ python run_all.py --set S2 --vars rain t2m wind --export-runs auto
+```
+
+For the five-model 2020 runs, add `python run_all.py --set S3 --vars t2m wind mslp && python run_all.py --set S4 --vars rain`
+before the last command; `--export-runs` then uses S3/S4 for 2020 dates automatically.
+
+Download `/kaggle/working/bundles/` (about 1 MB per run at 1.5°), put it in the repo's `bundles/`, and on a laptop:
+
+```
+pip install -r requirements-server.txt
+BLEND_BUNDLES=bundles uvicorn blend.server:app --port 8081     # then: cd web && npm run dev
+```
+
+The dashboard's bottom bar turns from **SYNTHETIC DATA** to **ENGINE CONNECTED**.

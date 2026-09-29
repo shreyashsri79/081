@@ -8,6 +8,9 @@ Laptop:
 
 Re-running skips files already downloaded. Quick test: python run_all.py --max-inits 5 --out test_out
 On Kaggle, attach a previous run's output (Add Input -> Your Work) and its cache/ files are reused.
+
+Dashboard bundles (BACKEND_BUILD_PLAN.md T11): add --export-runs auto (or dates, comma-separated) and the run also
+writes <out>/bundles/ for blend/server.py.
 """
 
 import argparse
@@ -222,6 +225,8 @@ def main():
     ap.add_argument("--no-extremes", action="store_true", help="skip the extreme-event probabilities")
     ap.add_argument("--clim-years", nargs=2, type=int, default=list(C.CLIM_YEARS),
                     help="regime climatology years; must not include a test year")
+    ap.add_argument("--export-runs", default="none",
+                    help="after training, write dashboard bundles: 'auto', 'none', or YYYY-MM-DD[,YYYY-MM-DD...]")
     a = ap.parse_args()
 
     s = C.SETS[a.set]
@@ -233,6 +238,10 @@ def main():
         download(s["models"], s["years"], variables, cache, a.jobs, a.max_inits, a.clim_years)
     assert not set(range(a.clim_years[0], a.clim_years[1] + 1)) & set(s["years"]), "climatology overlaps test years"
     train(a.set, s["models"], s["years"], variables, cache, art, a.clim_years, not a.no_extremes)
+    if a.export_runs != "none":
+        from blend import export
+        which = ["--auto"] if a.export_runs == "auto" else ["--dates", *a.export_runs.split(",")]
+        export.main(["--cache", cache, "--art", art, "--out", os.path.join(a.out, "bundles"), *which])
 
 
 if __name__ == "__main__":

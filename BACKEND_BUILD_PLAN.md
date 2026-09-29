@@ -767,3 +767,15 @@ BLEND_BUNDLES=bundles uvicorn blend.server:app --port 8081
 ## Deviations
 
 *(The implementing agent writes here: task, what differed, why, what was done instead.)*
+
+| Task | What differed | Why | Done instead |
+|---|---|---|---|
+| T1 / env | Local venv could not install `zarr<3` / `gcsfs` | Only Python 3.14 on the build machine; `numcodecs` has no 3.14 wheel | Installed the rest of `requirements.txt`; zarr/gcsfs are only needed to download from WB2, which runs on Kaggle. Tests never touch the network. |
+| T5 | `blend/geo.py` built in T5, not T6 | Regional scores need the India land mask | Same module and interface as planned |
+| T6 | `build_run` takes a `Context` (loads each set and truth once) instead of `(cache, art, date, out)` | Re-reading the cache per variable and per run was the slow part | `Context(cache, art)`; `main()` wires it; `--auto` and `--dates` as planned |
+| T6 | Unavailable-indicator reasons stored in `_x.unavailable` | The server must not import `export.py` (xarray) to get the heat-wave note | Server reads the note from the bundle |
+| T8 | `/api/scorecard` with no scorecard file returns 200 with empty rows | The web Skill screen treats 404 as a crash | `validation` says "No held-out scorecard in this bundle." |
+| T9 | Startup is ~2.5 s, not < 2 s | FastAPI's own import is ~0.95 s on this machine, uvicorn + numpy the rest; our modules add ~0.05 s | Accepted; no network, no xarray at import (enforced by test) |
+| T10 | Extra web changes beyond the list: selected cell kept by lat/lon across grids (`web/src/lib/sync.ts`); Landing picks an available run and places Nagpur by lat/lon; NaN cells never painted; landing headline counts the run's models | Real bundles use the 1.5° 23 x 23 grid; the synthetic default indices (0.5° grid) were out of range | Minimal, contract unchanged |
+| T10 | API probe counts the engine only if `/api/runs` is non-empty | An empty bundles/ would otherwise switch the web to a server with nothing to show | Falls back to synthetic |
+| T11 | Steps 2-3 (Kaggle run, committing real bundles) not done by the agent | Needs Kaggle / WB2 access | Commands added to KAGGLE_GUIDE.md "Dashboard bundles"; the flag is tested offline through `run_all.py --skip-download` |
