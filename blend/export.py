@@ -21,7 +21,7 @@ import xarray as xr
 from . import bundle as B
 from . import config as C
 from . import verify as V
-from .cache import fc_path, load_forecasts, load_truth
+from .cache import chirps_path, fc_files, load_forecasts, load_truth
 from .harmonise import prepare
 from .regimes import all_keys, label
 from .skill import apply_bias, fit_mse
@@ -47,7 +47,7 @@ def sets_for(year: int, cache: str) -> dict[str, str]:
         raise ValueError(f"{year}: no model set covers this year (S1/S2 years: {C.SETS['S1']['years']})")
     if year == 2020:
         need = {m for s in ("S3", "S4") for m in C.SETS[s]["models"]}
-        if all(os.path.exists(fc_path(cache, m, 2020)) for m in need):
+        if all(fc_files(cache, m, 2020) for m in need):
             return dict(SETS_2020)
     return dict(SETS_LOYO)
 
@@ -79,7 +79,7 @@ def fit_for_date(fc: xr.DataArray, obs: xr.DataArray, date, mode: str) -> dict:
     p["mse_B2"] = fit_mse(fc_bc, obs_tr, "all")
     p["mse_B3s"] = fit_mse(fc_bc, obs_tr, "season")
     if "regime_key" in fc.coords:
-        p["mse_B3"] = fit_mse(fc_bc, obs_tr, "regime", keys=all_keys())
+        p["mse_B3"] = fit_mse(fc_bc, obs_tr, "regime", keys=all_keys())  # also shown for B3c
         p["n_regime"] = {str(k): int(v) for k, v in pd.Series(fc_tr.regime_key.values).value_counts().items()}
     p["n_season"] = {str(k): int(v) for k, v in pd.Series(fc_tr.season.values).value_counts().items()}
     p["fold"] = name
@@ -105,11 +105,11 @@ def diff_scale(var_ui: str) -> float:
 
 # ------------------------------------------------------------ scorecards (plan T5)
 
-RUNG_ORDER = ["B3", "B3s", "B2", "B1"]
+RUNG_ORDER = ["B3c", "B3", "B3s", "B2c", "B2", "B1"]  # covariance rungs where training produced them
 
 
 def choose_rung(card: pd.DataFrame, var_name: str) -> tuple[str, str]:
-    """The blend rung to ship for one variable (plan §5.3), from that set's scorecard CSV rows.
+    """The blend rung to ship for one variable (plan §5.3, extended with B3c / B2c), from that set's scorecard rows.
 
     Eligible: not 'worse' than B0bc on at least 6 of the 10 leads. Ship the first eligible candidate whose mean
     RMSE over leads is no higher than the next available candidate's; otherwise B1."""
@@ -213,6 +213,13 @@ REGIME_TEXT = {"normal": "Normal", "active": "Monsoon active", "break": "Monsoon
 HEAT_NOTE = ("Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon "
              "(12 UTC) value.")
 UV_NOTE = "Wind particles unavailable: u/v components are not in the cache."
+UV_OK_NOTE = "Wind particles: u/v members blended with the wind-speed weights (direction only, no bias correction)."
+U10, V10 = "10m_u_component_of_wind", "10m_v_component_of_wind"
+DEMO_NOTE = ("DEMO BUNDLE: generated data in the engine's exact format, not WeatherBench 2 forecasts. It shows how the "
+             "dashboard works; replace with bundles from run_all.py --export-runs before quoting any number.")
+RAIN_ERA5 = "Rain truth: ERA5 reanalysis. CHIRPS verification is planned; ERA5 favours ERA5-like models."
+RAIN_CHIRPS = ("Rain truth: CHIRPS 2.0, block mean to the model grid, land only: rain is scored and weighted over "
+               "land; sea cells are blank. T2m, wind and MSLP truth: ERA5.")
 
 
 class Context:
@@ -237,8 +244,15 @@ class Context:
         return self._prep[key]
 
     def card(self, set_name: str) -> pd.DataFrame | None:
-        p = os.path.join(self.art, f"scorecard_{set_name}.csv") if self.art else None
-        return pd.read_csv(p) if p and os.path.exists(p) else None
+        """scorecard_<SET>.csv from artifacts/ (older runs) or artifacts/<SET>/ (one folder per set)."""
+        if not self.art:
+            return None
+        name = f"scorecard_{set_name}.csv"
+        for p in (os.path.join(self.art, set_name, name), os.path.join(self.art, name),
+                  os.path.join(os.path.dirname(os.path.normpath(self.art)), set_name, name)):
+            if os.path.exists(p):
+                return pd.read_csv(p)
+        return None
 
     def rung(self, set_name: str, ui: str) -> tuple[str, str]:
         card = self.card(set_name)
@@ -268,8 +282,22 @@ def _commit() -> str:
         return "unknown"
 
 
-def build_run(ctx: Context, date, out_root: Path) -> Path:
-    """One hindcast bundle for init `date`: out-of-sample weights, blend, members, errors, interim extremes."""
+def _wind_components(ctx: Context, set_name: str, models: list[str], date, w: np.ndarray) -> dict:
+    """u10, v10 (L, N) for the map's particles, if every wind member has u/v in the cache."""
+    fcs = ctx._fc.get(set_name, {})
+    if not all(m in fcs and U10 in fcs[m] and V10 in fcs[m] for m in models):
+        return {}
+    out = {}
+    for name, var in (("u10", U10), ("v10", V10)):
+        comp = xr.concat([fcs[m][var].sel(init=date) for m in models], "model")
+        comp = comp.transpose("model", "lead", "latitude", "longitude").values
+        out[name] = (comp.reshape(len(models), comp.shape[1], -1) * w).sum(0).astype(np.float32)
+    return out
+
+
+def build_run(ctx: Context, date, out_root: Path, demo: bool = False) -> Path:
+    """One hindcast bundle for init `date`: out-of-sample weights, blend, members, errors, interim extremes.
+    demo=True marks the bundle as synthetic (generated inputs) so the dashboard labels it."""
     date = pd.Timestamp(date).normalize()
     run_id = f"hindcast-{date:%Y%m%d}"
     steps, notes, arrays = [], [], {}
@@ -300,16 +328,16 @@ def build_run(ctx: Context, date, out_root: Path) -> Path:
         fcd = fc.sel(init=date)
         season, key = str(fcd.season.values), str(fcd.regime_key.values)
         # weights and the MSE table behind them, at this date's season / regime key
-        if rung == "B3":
-            w, mse = p["w_B3"].sel(regime_key=key), p["mse_B3"].sel(regime_key=key)
+        if rung in ("B3", "B3c"):
+            w, mse = p[f"w_{rung}"].sel(regime_key=key), p["mse_B3"].sel(regime_key=key)
         elif rung == "B3s":
             w, mse = p["w_B3s"].sel(season=season), p["mse_B3s"].sel(season=season)
-        elif rung == "B2":
-            w, mse = p["w_B2"], p["mse_B2"]
+        elif rung in ("B2", "B2c"):
+            w, mse = p[f"w_{rung}"], p["mse_B2"]
         else:  # B1: equal mean of the bias-corrected members
             w, mse = xr.ones_like(p["w_B2"]) / fc.sizes["model"], p["mse_B2"]
         bias = p["bias"].sel(season=season)
-        fc_bc = fcd - bias
+        fc_bc = apply_bias(fcd, p["bias"])   # same correction as training (rain kept >= 0)
         blended = (fc_bc * w).sum("model", skipna=False)
         dims4, dims3 = ("model", "lead", "latitude", "longitude"), ("lead", "latitude", "longitude")
         f = diff_scale(ui)
@@ -339,19 +367,24 @@ def build_run(ctx: Context, date, out_root: Path) -> Path:
 
     if not models_by_var:
         raise ValueError(f"{date.date()}: no variable could be built")
+    uv = _wind_components(ctx, sets_used["wind"], models_by_var["wind"], date, arrays["w_wind"]) \
+        if "wind" in models_by_var else {}
+    arrays.update(uv)
     vars_ = [v for v in UI_ORDER if v in models_by_var]
     regime = str(ctx.labels["regime"].get(date, "normal")) if date in ctx.labels.index else "normal"
     season = C.SEASON_OF_MONTH[date.month]
     label_text = "Monsoon normal" if (regime == "normal" and season == "JJAS") else REGIME_TEXT[regime]
     notes = [
-        "Rain truth: ERA5 reanalysis. CHIRPS verification is planned; ERA5 favours ERA5-like models.",
+        RAIN_CHIRPS if os.path.exists(chirps_path(ctx.cache)) else RAIN_ERA5,
         "Weights for this date are fitted without its " + "; ".join(sorted({f for f in folds.values()})) +
         " (out-of-sample).",
         "Rung per variable: " + ", ".join(f"{v} {rungs[v]}" for v in vars_) + ".",
         f"Grid {grid['step']}° (~{round(grid['step'] * 111)} km); values are cell averages.",
         HEAT_NOTE,
-        UV_NOTE,
+        UV_OK_NOTE if uv else UV_NOTE,
     ] + notes
+    if demo:
+        notes.insert(0, DEMO_NOTE)
     meta = {
         "id": run_id, "kind": "hindcast", "init": f"{date:%Y-%m-%d}T00:00Z",
         "status": "ok" if len(vars_) == len(UI_ORDER) else "partial",
@@ -359,7 +392,7 @@ def build_run(ctx: Context, date, out_root: Path) -> Path:
         "grid": grid, "leads": [int(x) for x in C.LEAD_DAYS], "vars": vars_, "modelsByVar": models_by_var,
         "regime": {"season": season, "label": label_text, "basis": "init"},
         "rung": rungs.get("t2m", rungs[vars_[0]]),
-        "steps": steps, "provenance": "measured", "notes": notes,
+        "steps": steps, "provenance": "synthetic" if demo else "measured", "notes": notes,
         "_x": {"sets": sets_used, "folds": folds, "rungs": rungs, "rungReason": reasons, "regimeKey": key,
                "nSeason": n_season, "nRegime": n_regime, "k": C.K_SHRINK,
                "thresholds": {k: v[1] for k, v in EXTREMES.items()}, "extremeMethod": EXTREME_METHOD,
@@ -396,10 +429,10 @@ def auto_dates(ctx: Context, cap: int = 12) -> list[pd.Timestamp]:
     """First init of each regime (≥ 3 days that year) per forecast year in the cache, plus 2020-07-15."""
     have = {}
     for y in C.SETS["S1"]["years"]:
-        files = [fc_path(ctx.cache, m, y) for m in C.SETS["S1"]["models"]]
-        if all(os.path.exists(f) for f in files):
+        files = [fc_files(ctx.cache, m, y) for m in C.SETS["S1"]["models"]]
+        if all(files):
             inits = None
-            for f in files:
+            for f in (fs[0] for fs in files):   # every file of one model-year holds the same inits
                 with xr.open_dataset(f) as ds:
                     t = set(pd.DatetimeIndex(ds.init.values).normalize())
                 inits = t if inits is None else inits & t
@@ -427,6 +460,7 @@ def main(argv=None):
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--dates", nargs="+", help="init dates, YYYY-MM-DD")
     g.add_argument("--auto", action="store_true", help="one date per regime and year, plus 2020-07-15")
+    ap.add_argument("--demo", action="store_true", help="inputs are generated (blend.demo): mark bundles synthetic")
     a = ap.parse_args(argv)
 
     ctx = Context(a.cache, a.art)
@@ -435,7 +469,7 @@ def main(argv=None):
     used = set()
     for d in dates:
         try:
-            path = build_run(ctx, d, out)
+            path = build_run(ctx, d, out, demo=a.demo)
             used |= set(B.read_meta(out, path.name)["_x"]["sets"].values())
             print(f"wrote {path}")
         except (KeyError, ValueError) as e:

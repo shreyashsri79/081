@@ -15,7 +15,7 @@ ModelId = Literal["hres", "graphcast", "pangu", "fuxi", "gencast", "ifs", "aifs"
 VarId = Literal["rain", "t2m", "wind", "mslp"]
 ExtremeId = Literal["rain64", "rain115", "rain204", "heat", "wind15"]
 Season = Literal["JF", "MAM", "JJAS", "OND"]
-Rung = Literal["B0", "B1", "B2", "B3s", "B3", "B4"]
+Rung = Literal["B0", "B1", "B2", "B2c", "B3s", "B3", "B3c", "B4"]
 StepStatus = Literal["ok", "failed", "skipped"]
 
 Num = float | None  # null on the wire for NaN

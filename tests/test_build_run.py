@@ -66,7 +66,8 @@ def test_blend_is_weighted_bias_corrected_mean(run):
     for ui in ("t2m", "mslp", "rain"):
         lead, k = int(rng.integers(10)), int(rng.integers(25))
         fc, w, bias = a[f"fc_{ui}"][:, lead, k], a[f"w_{ui}"][:, lead, k], a[f"bias_{ui}"][:, lead, k]
-        np.testing.assert_allclose((w * (fc - bias)).sum(), a[f"blend_{ui}"][lead, k], rtol=1e-4, atol=1e-3)
+        corrected = np.maximum(fc - bias, 0) if ui == "rain" else fc - bias    # skill.apply_bias keeps rain >= 0
+        np.testing.assert_allclose((w * corrected).sum(), a[f"blend_{ui}"][lead, k], rtol=1e-4, atol=1e-3)
 
 
 def test_extremes_are_probabilities(run):

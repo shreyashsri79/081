@@ -241,7 +241,8 @@ def main():
     if a.export_runs != "none":
         from blend import export
         which = ["--auto"] if a.export_runs == "auto" else ["--dates", *a.export_runs.split(",")]
-        export.main(["--cache", cache, "--art", art, "--out", os.path.join(a.out, "bundles"), *which])
+        export.main(["--cache", cache, "--art", os.path.join(a.out, "artifacts"), "--out", os.path.join(a.out, "bundles"),
+                     *which])
 
 
 if __name__ == "__main__":

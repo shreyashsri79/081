@@ -18,7 +18,7 @@ export type ModelId = 'hres' | 'graphcast' | 'pangu' | 'fuxi' | 'gencast' | 'ifs
 export type VarId = 'rain' | 't2m' | 'wind' | 'mslp'
 export type ExtremeId = 'rain64' | 'rain115' | 'rain204' | 'heat' | 'wind15'
 export type Season = 'JF' | 'MAM' | 'JJAS' | 'OND'
-export type Rung = 'B0' | 'B1' | 'B2' | 'B3s' | 'B3' | 'B4'
+export type Rung = 'B0' | 'B1' | 'B2' | 'B2c' | 'B3s' | 'B3' | 'B3c' | 'B4'
 
 /** Regular lat/lon grid; values are row-major, row 0 = southernmost. */
 export interface Grid {

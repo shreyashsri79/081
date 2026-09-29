@@ -108,9 +108,10 @@ def create_app(bundles: Path | str | None = None, web_dist: Path | str | None = 
 
     @app.get("/api/health")
     def health():
-        n = len(index()["runs"])
-        return _out(A.Health(status="ok", contract_version=A.CONTRACT_VERSION, runs=n,
-                             provenance="measured" if n else "synthetic"))
+        ids = [r["id"] for r in index()["runs"]]
+        measured = bool(ids) and all(meta(i)["provenance"] == "measured" for i in ids)
+        return _out(A.Health(status="ok", contract_version=A.CONTRACT_VERSION, runs=len(ids),
+                             provenance="measured" if measured else "synthetic"))
 
     @app.get("/api/runs")
     def runs():
