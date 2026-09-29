@@ -1,0 +1,172 @@
+{
+ "id": "hindcast-20220502",
+ "kind": "hindcast",
+ "init": "2022-05-02T00:00Z",
+ "status": "ok",
+ "models": [
+  "hres",
+  "graphcast",
+  "pangu"
+ ],
+ "grid": {
+  "lat0": 6.0,
+  "lon0": 66.0,
+  "step": 1.5,
+  "ny": 23,
+  "nx": 23
+ },
+ "leads": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10
+ ],
+ "vars": [
+  "rain",
+  "t2m",
+  "wind",
+  "mslp"
+ ],
+ "modelsByVar": {
+  "rain": [
+   "hres",
+   "graphcast"
+  ],
+  "t2m": [
+   "hres",
+   "graphcast",
+   "pangu"
+  ],
+  "wind": [
+   "hres",
+   "graphcast",
+   "pangu"
+  ],
+  "mslp": [
+   "hres",
+   "graphcast",
+   "pangu"
+  ]
+ },
+ "regime": {
+  "season": "MAM",
+  "label": "Normal",
+  "basis": "init"
+ },
+ "rung": "B3c",
+ "steps": [
+  {
+   "name": "fit rain on S2, fold 2022 held out",
+   "status": "ok",
+   "seconds": 1.46
+  },
+  {
+   "name": "blend rain (B3c) + extremes",
+   "status": "ok",
+   "seconds": 0.02
+  },
+  {
+   "name": "fit t2m on S1, fold 2022 held out",
+   "status": "ok",
+   "seconds": 3.3
+  },
+  {
+   "name": "blend t2m (B3c) + extremes",
+   "status": "ok",
+   "seconds": 0.02
+  },
+  {
+   "name": "fit wind on S1, fold 2022 held out",
+   "status": "ok",
+   "seconds": 3.41
+  },
+  {
+   "name": "blend wind (B3c) + extremes",
+   "status": "ok",
+   "seconds": 0.01
+  },
+  {
+   "name": "fit mslp on S1, fold 2022 held out",
+   "status": "ok",
+   "seconds": 2.92
+  },
+  {
+   "name": "blend mslp (B3c) + extremes",
+   "status": "ok",
+   "seconds": 0.01
+  },
+  {
+   "name": "write bundle",
+   "status": "ok",
+   "seconds": 0.03
+  }
+ ],
+ "provenance": "synthetic",
+ "notes": [
+  "DEMO BUNDLE: generated data in the engine's exact format, not WeatherBench 2 forecasts. It shows how the dashboard works; replace with bundles from run_all.py --export-runs before quoting any number.",
+  "Rain truth: CHIRPS 2.0, block mean to the model grid, land only: rain is scored and weighted over land; sea cells are blank. T2m, wind and MSLP truth: ERA5.",
+  "Weights for this date are fitted without its year 2022 (out-of-sample).",
+  "Rung per variable: rain B3c, t2m B3c, wind B3c, mslp B3c.",
+  "Grid 1.5\u00b0 (~166 km); values are cell averages.",
+  "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value.",
+  "Wind particles: u/v members blended with the wind-speed weights (direction only, no bias correction)."
+ ],
+ "_x": {
+  "sets": {
+   "rain": "S2",
+   "t2m": "S1",
+   "wind": "S1",
+   "mslp": "S1"
+  },
+  "folds": {
+   "rain": "year 2022",
+   "t2m": "year 2022",
+   "wind": "year 2022",
+   "mslp": "year 2022"
+  },
+  "rungs": {
+   "rain": "B3c",
+   "t2m": "B3c",
+   "wind": "B3c",
+   "mslp": "B3c"
+  },
+  "rungReason": {
+   "rain": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 5.181 vs B3 5.183",
+   "t2m": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 1.851 vs B3 1.89",
+   "wind": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 1.695 vs B3 1.728",
+   "mslp": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 154.8 vs B3 158"
+  },
+  "regimeKey": "MAM:normal",
+  "nSeason": {
+   "rain": 122,
+   "t2m": 122,
+   "wind": 122,
+   "mslp": 122
+  },
+  "nRegime": {
+   "rain": 79,
+   "t2m": 79,
+   "wind": 79,
+   "mslp": 79
+  },
+  "k": 20,
+  "thresholds": {
+   "rain64": 64.5,
+   "rain115": 115.6,
+   "rain204": 204.5,
+   "wind15": 15.0
+  },
+  "extremeMethod": "weighted vote of bias-corrected members (uncalibrated)",
+  "unavailable": {
+   "heat": "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value."
+  },
+  "codeCommit": "ba0b33b",
+  "created": "2026-09-29T10:44:01+00:00"
+ }
+}

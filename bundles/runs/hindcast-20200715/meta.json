@@ -1,0 +1,182 @@
+{
+ "id": "hindcast-20200715",
+ "kind": "hindcast",
+ "init": "2020-07-15T00:00Z",
+ "status": "ok",
+ "models": [
+  "hres",
+  "graphcast",
+  "pangu",
+  "fuxi",
+  "gencast"
+ ],
+ "grid": {
+  "lat0": 6.0,
+  "lon0": 66.0,
+  "step": 1.5,
+  "ny": 23,
+  "nx": 23
+ },
+ "leads": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10
+ ],
+ "vars": [
+  "rain",
+  "t2m",
+  "wind",
+  "mslp"
+ ],
+ "modelsByVar": {
+  "rain": [
+   "hres",
+   "graphcast",
+   "fuxi",
+   "gencast"
+  ],
+  "t2m": [
+   "hres",
+   "graphcast",
+   "pangu",
+   "fuxi",
+   "gencast"
+  ],
+  "wind": [
+   "hres",
+   "graphcast",
+   "pangu",
+   "fuxi",
+   "gencast"
+  ],
+  "mslp": [
+   "hres",
+   "graphcast",
+   "pangu",
+   "fuxi",
+   "gencast"
+  ]
+ },
+ "regime": {
+  "season": "JJAS",
+  "label": "Monsoon active",
+  "basis": "init"
+ },
+ "rung": "B3c",
+ "steps": [
+  {
+   "name": "fit rain on S4, fold m07 held out",
+   "status": "ok",
+   "seconds": 2.95
+  },
+  {
+   "name": "blend rain (B3c) + extremes",
+   "status": "ok",
+   "seconds": 0.02
+  },
+  {
+   "name": "fit t2m on S3, fold m07 held out",
+   "status": "ok",
+   "seconds": 3.82
+  },
+  {
+   "name": "blend t2m (B3c) + extremes",
+   "status": "ok",
+   "seconds": 0.01
+  },
+  {
+   "name": "fit wind on S3, fold m07 held out",
+   "status": "ok",
+   "seconds": 4.2
+  },
+  {
+   "name": "blend wind (B3c) + extremes",
+   "status": "ok",
+   "seconds": 0.02
+  },
+  {
+   "name": "fit mslp on S3, fold m07 held out",
+   "status": "ok",
+   "seconds": 5.63
+  },
+  {
+   "name": "blend mslp (B3c) + extremes",
+   "status": "ok",
+   "seconds": 0.02
+  },
+  {
+   "name": "write bundle",
+   "status": "ok",
+   "seconds": 0.11
+  }
+ ],
+ "provenance": "synthetic",
+ "notes": [
+  "DEMO BUNDLE: generated data in the engine's exact format, not WeatherBench 2 forecasts. It shows how the dashboard works; replace with bundles from run_all.py --export-runs before quoting any number.",
+  "Rain truth: CHIRPS 2.0, block mean to the model grid, land only: rain is scored and weighted over land; sea cells are blank. T2m, wind and MSLP truth: ERA5.",
+  "Weights for this date are fitted without its month 07 \u00b110 days (out-of-sample).",
+  "Rung per variable: rain B3c, t2m B3c, wind B3c, mslp B3c.",
+  "Grid 1.5\u00b0 (~166 km); values are cell averages.",
+  "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value.",
+  "Wind particles: u/v members blended with the wind-speed weights (direction only, no bias correction)."
+ ],
+ "_x": {
+  "sets": {
+   "rain": "S4",
+   "t2m": "S3",
+   "wind": "S3",
+   "mslp": "S3"
+  },
+  "folds": {
+   "rain": "month 07 \u00b110 days",
+   "t2m": "month 07 \u00b110 days",
+   "wind": "month 07 \u00b110 days",
+   "mslp": "month 07 \u00b110 days"
+  },
+  "rungs": {
+   "rain": "B3c",
+   "t2m": "B3c",
+   "wind": "B3c",
+   "mslp": "B3c"
+  },
+  "rungReason": {
+   "rain": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 4.765 vs B3 5.01",
+   "t2m": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 1.775 vs B3 1.887",
+   "wind": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 1.655 vs B3 1.753",
+   "mslp": "B3c: not worse than B0bc on 10/10 leads; mean RMSE 149.5 vs B3 158.6"
+  },
+  "regimeKey": "JJAS:active",
+  "nSeason": {
+   "rain": 71,
+   "t2m": 71,
+   "wind": 71,
+   "mslp": 71
+  },
+  "nRegime": {
+   "rain": 5,
+   "t2m": 5,
+   "wind": 5,
+   "mslp": 5
+  },
+  "k": 20,
+  "thresholds": {
+   "rain64": 64.5,
+   "rain115": 115.6,
+   "rain204": 204.5,
+   "wind15": 15.0
+  },
+  "extremeMethod": "weighted vote of bias-corrected members (uncalibrated)",
+  "unavailable": {
+   "heat": "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value."
+  },
+  "codeCommit": "ba0b33b",
+  "created": "2026-09-29T10:42:38+00:00"
+ }
+}

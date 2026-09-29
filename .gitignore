@@ -6,3 +6,4 @@ cache/
 artifacts/
 .venv/
 bundles/**/*.tmp
+demo_work/
