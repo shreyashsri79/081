@@ -363,6 +363,8 @@ def build_run(ctx: Context, date, out_root: Path) -> Path:
         "_x": {"sets": sets_used, "folds": folds, "rungs": rungs, "rungReason": reasons, "regimeKey": key,
                "nSeason": n_season, "nRegime": n_regime, "k": C.K_SHRINK,
                "thresholds": {k: v[1] for k, v in EXTREMES.items()}, "extremeMethod": EXTREME_METHOD,
+               "unavailable": {"heat": HEAT_NOTE, **{ex: f"{var} not built for this run."
+                                                     for ex, (var, _) in EXTREMES.items() if var not in vars_}},
                "codeCommit": _commit(),
                "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")},
     }
