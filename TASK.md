@@ -9,12 +9,12 @@ Legend: ✅ done and run on Kaggle · 🟡 code done, Kaggle result pending · �
 |---|---|---|
 | Core model (data, truth, skill tables, weights, verification) | ~85 % | Measured on real data, 3 held-out years |
 | Weather regimes | ~70 % | Built and measured; gives no extra gain yet |
-| Extreme-event guidance | ~60 % | Code done; Kaggle run pending; IMD heat-wave rule missing |
+| Extreme-event guidance | ~80 % | Measured on Kaggle (below); IMD heat-wave rule missing; yes/no warnings over-warn |
 | Products (maps, scorecards, files for the dashboard) | ~40 % | Figures done; forecast fields / GeoJSON / API files not exported |
 | Operational daily run (live IFS / AIFS / GFS) | 0 % | Biggest gap for PS outcome 5 |
 | Dashboard | ~30 % | Teammate's `web/` frontend exists; not connected to model outputs |
 | NCUM / NEPS-G adapter | 0 % | |
-| **Whole project** | **~55 %** | |
+| **Whole project** | **~58 %** | |
 
 ## Measured results so far (held-out years 2018 / 2020 / 2022, 1,095 days, 1.5° India)
 
@@ -23,6 +23,16 @@ Legend: ✅ done and run on Kaggle · 🟡 code done, Kaggle result pending · �
 | Temperature (2 m) | GraphCast 0.903 K | B2c 0.860 K | **−4.8 %** (CI excludes 0) | −7.0 % |
 | Wind (10 m) | GraphCast 0.668 m/s | B2c 0.603 m/s | **−9.7 %** | −4.3 % |
 | Rain (24 h, CHIRPS truth) | GraphCast 5.424 mm | B2c 5.204 mm | **−4.0 %** | +0.3 % (bias-corrected GraphCast slightly better at Day 3; blend better at Day 10, −1.5 %) |
+
+Extremes, Day 3, held-out (probability product):
+
+| Event | Brier skill vs climatology | CSI: ours / best model / blend mean |
+|---|---|---|
+| Temperature p95 | +0.50 | 0.526 / 0.509 / 0.510 |
+| Wind p95 | +0.48 | 0.495 / 0.486 / 0.502 |
+| Rain p95 | +0.17 | 0.271 / 0.274 / 0.252 |
+| Rain p99 | +0.08 | 0.156 / 0.165 / 0.138 |
+| Rain ≥ 25 mm | +0.12 | 0.250 / 0.254 / 0.227 |
 
 Findings:
 - The gain grows with lead time (temperature −15 % at Day 10).
@@ -41,7 +51,7 @@ Findings:
 | C4 Regimes | 🔶 | Init-day labels: active, break, depression, western disturbance, heat; climatology 2003–2017 | Forecast-day regime (models' own fields); z500-based WD; k-means option |
 | C5 Skill memory | ✅ | Bias, MSE, error covariance; shrinkage; 3×3 smoothing | — |
 | C6 Weight ladder | 🔶 | B0, B0bc, B1, B2, B2raw, B3s, B3, **B2c**, B3c | **B4 daily online update**; B5 stacking; tuning of α / k (fixed at 1 / 20) |
-| C7 Extremes | 🟡 | p95 / p99 / 25 mm events, per-model thresholds, weighted votes, calibration, Brier / CSI, case maps | Kaggle result; IMD heat-wave rule (needs a 12 UTC / Tmax field); IMD rain thresholds on 0.25° |
+| C7 Extremes | ✅ | p95 / p99 / 25 mm events, per-model thresholds, weighted votes, calibration, Brier / CSI, case maps | Kaggle result; IMD heat-wave rule (needs a 12 UTC / Tmax field); IMD rain thresholds on 0.25° |
 | C8 Verification | 🔶 | Leave-one-year-out, blocked months, block-bootstrap CI, per-regime table, gain maps | Per-region table (NW, central, NE, south, Bay, Arabian Sea) |
 | C9 Products | 🔶 | Weight maps, dominant-model map, gain map, RMSE-vs-lead, deck figures, weights NetCDF | Blended forecast fields NetCDF, GeoJSON tiles, district CSV, "why this weight" JSON |
 | C10 Daily run | ❌ | — | Fetch ECMWF IFS + AIFS and GFS 00 UTC, harmonise, apply weights, write `runs/YYYY-MM-DD/` |
@@ -56,7 +66,6 @@ Findings:
 | # | Task | Est. time | Why |
 |---|---|---|---|
 | 1 | Read S3 / S4 results (running now) | — | Do more models help? |
-| 2 | Kaggle run with extremes (S1 + S2) | 15 min | PS outcome 4 |
 | 3 | Export products for the dashboard: blended fields, weights, extremes as NetCDF + JSON / GeoJSON | 2 h | Connects model to the frontend |
 | 4 | Daily operational run on live IFS / AIFS / GFS (C10) | 4–6 h | PS outcome 5, biggest gap |
 | 5 | B4 online weight update | 2 h | "Dynamic" weights; used by the daily run |
