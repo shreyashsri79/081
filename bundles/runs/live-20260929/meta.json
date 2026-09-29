@@ -1,0 +1,111 @@
+{
+ "id": "live-20260929",
+ "kind": "live",
+ "init": "2026-09-29T00:00Z",
+ "status": "ok",
+ "models": [
+  "ifs",
+  "aifs"
+ ],
+ "grid": {
+  "lat0": 6.0,
+  "lon0": 66.0,
+  "step": 1.5,
+  "ny": 23,
+  "nx": 23
+ },
+ "leads": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10
+ ],
+ "vars": [
+  "t2m",
+  "wind",
+  "mslp",
+  "rain"
+ ],
+ "modelsByVar": {
+  "t2m": [
+   "ifs",
+   "aifs"
+  ],
+  "wind": [
+   "ifs",
+   "aifs"
+  ],
+  "mslp": [
+   "ifs",
+   "aifs"
+  ],
+  "rain": [
+   "ifs",
+   "aifs"
+  ]
+ },
+ "regime": {
+  "season": "JJAS",
+  "label": "JJAS (season only)",
+  "basis": "init"
+ },
+ "rung": "B2c",
+ "steps": [
+  {
+   "name": "fetch ifs 00 UTC Day 1-10",
+   "status": "ok",
+   "seconds": 5.82
+  },
+  {
+   "name": "fetch aifs 00 UTC Day 1-10",
+   "status": "ok",
+   "seconds": 4.33
+  },
+  {
+   "name": "blend with stored weights (B2c on proxy covariance)",
+   "status": "ok",
+   "seconds": 0.09
+  },
+  {
+   "name": "write bundle",
+   "status": "ok",
+   "seconds": 13.99
+  }
+ ],
+ "provenance": "measured",
+ "notes": [
+  "Live run: today's ECMWF IFS and AIFS open-data forecasts, 00 UTC, averaged onto the 1.5\u00b0 training grid.",
+  "Weights borrow learned skill from training counterparts: IFS <- HRES, AIFS <- GraphCast (both 2018-2022). They are re-solved as minimum-variance weights for this pair.",
+  "Bias correction: IFS uses the HRES seasonal bias; AIFS is not bias-corrected (no history yet).",
+  "No truth yet for these valid dates, so this run has no scores. Skill figures come from the hindcast scorecards.",
+  "Rain weights over the sea are equal (rain truth is land only, so there is no learned skill there).",
+  "Extreme probabilities are not produced live yet (they need each live model's own climatology).",
+  "Regime: season only; the live regime label needs observed rain for the last 3 days."
+ ],
+ "extremes": [],
+ "_x": {
+  "sets": {
+   "t2m": "S1",
+   "wind": "S1",
+   "mslp": "S1",
+   "rain": "S2"
+  },
+  "proxy": {
+   "ifs": "hres",
+   "aifs": "graphcast"
+  },
+  "k": 20.0,
+  "nSeason": {},
+  "nRegime": {},
+  "extremeCalibrated": false,
+  "extremeMethod": null,
+  "modelFile": "/kaggle/working/artifacts",
+  "created": "2026-09-29T13:36:45+00:00"
+ }
+}

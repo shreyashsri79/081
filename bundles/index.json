@@ -1,7 +1,17 @@
 {
  "contractVersion": "1.1",
- "created": "2026-09-29T12:11:21+00:00",
+ "created": "2026-09-29T13:36:45+00:00",
  "runs": [
+  {
+   "id": "live-20260929",
+   "kind": "live",
+   "init": "2026-09-29T00:00Z",
+   "status": "ok",
+   "models": [
+    "ifs",
+    "aifs"
+   ]
+  },
   {
    "id": "hindcast-20180101",
    "kind": "hindcast",
