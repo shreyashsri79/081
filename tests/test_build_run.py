@@ -36,9 +36,12 @@ def test_array_shapes(run):
             assert a[f"{name}_{ui}"].shape == (m, 10, n), name
         for name in ("blend", "obs"):
             assert a[f"{name}_{ui}"].shape == (10, n), name
-    for ex in ("rain64", "rain115", "rain204", "wind15"):
-        assert a[f"p_{ex}"].shape == (10, n)
-    assert "p_heat" not in a
+    ids = [e["id"] for e in meta["extremes"]]
+    assert ids == ["rain_p95", "rain_p99", "rain_25mm", "t2m_p95", "t2m_p99", "wind_p95", "wind_p99", "heat"]
+    for e in meta["extremes"]:
+        if e["available"]:
+            assert a[f"p_{e['id']}"].shape == (10, n)
+    assert "p_heat" not in a and not meta["extremes"][-1]["available"]
 
 
 def test_weights_sum_to_one(run):
@@ -72,7 +75,7 @@ def test_blend_is_weighted_bias_corrected_mean(run):
 
 def test_extremes_are_probabilities(run):
     _, a = run
-    for ex in ("rain64", "wind15"):
+    for ex in ("rain_p95", "wind_p99"):
         v = a[f"p_{ex}"][np.isfinite(a[f"p_{ex}"])]
         assert ((v >= 0) & (v <= 1)).all()
 

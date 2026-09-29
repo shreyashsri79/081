@@ -13,7 +13,8 @@ CONTRACT_VERSION = "1.1"
 
 ModelId = Literal["hres", "graphcast", "pangu", "fuxi", "gencast", "ifs", "aifs", "gfs"]
 VarId = Literal["rain", "t2m", "wind", "mslp"]
-ExtremeId = Literal["rain64", "rain115", "rain204", "heat", "wind15"]
+# Event ids come from each run (Run.extremes): "rain_p95", "wind_p99", "heat"... The synthetic source uses its own.
+ExtremeId = str
 Season = Literal["JF", "MAM", "JJAS", "OND"]
 Rung = Literal["B0", "B1", "B2", "B2c", "B3s", "B3", "B3c", "B4"]
 StepStatus = Literal["ok", "failed", "skipped"]
@@ -54,6 +55,16 @@ class RunSummary(Api):
     models: list[ModelId]
 
 
+class ExtremeInfo(Api):
+    id: str
+    var: VarId
+    name: str
+    short: str
+    threshold: str
+    available: bool
+    note: str | None = None
+
+
 class Run(RunSummary):
     grid: Grid
     leads: list[int]
@@ -64,6 +75,7 @@ class Run(RunSummary):
     steps: list[RunStep]
     provenance: Literal["synthetic", "measured"]
     notes: list[str] | None = None
+    extremes: list[ExtremeInfo] | None = None
 
 
 class Field(Api):

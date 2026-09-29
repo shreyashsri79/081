@@ -23,9 +23,6 @@ from . import bundle as B
 from .geo import state_index, state_rollup
 
 UNITS = {"rain": "mm", "t2m": "°C", "wind": "m/s", "mslp": "hPa"}
-THRESHOLD_TEXT = {"rain64": "≥ 64.5 mm / 24 h", "rain115": "≥ 115.6 mm / 24 h", "rain204": "≥ 204.5 mm / 24 h",
-                  "heat": "IMD criterion, T2m proxy", "wind15": "10 m wind ≥ 15 m/s"}
-EXTREME_IDS = tuple(THRESHOLD_TEXT)
 DIGITS = {"field": 3, "weight": 4, "prob": 3}
 
 log = logging.getLogger("uvicorn.error")
@@ -169,26 +166,22 @@ def create_app(bundles: Path | str | None = None, web_dist: Path | str | None = 
     @app.get("/api/extremes")
     def extremes(run: str, type: str, lead: int):
         m = meta(run)
-        if type not in EXTREME_IDS:
-            raise HTTPException(404, f"unknown extreme '{type}' (one of {', '.join(EXTREME_IDS)})")
+        events = {e["id"]: e for e in m.get("extremes") or []}
+        if type not in events:
+            raise HTTPException(404, f"unknown event '{type}' in run {run} (has {', '.join(events) or 'none'})")
         li = lead_of(m, lead)
-        a, x, g = arrays(run), m["_x"], m["grid"]
-        base = {"type": type, "lead": lead, "threshold": THRESHOLD_TEXT[type], "calibrated": False,
-                "method": x.get("extremeMethod")}
-        if f"p_{type}" not in a:
-            note = x.get("unavailable", {}).get(type, "Not produced for this run.")
-            return _out(A.ExtremeMap(**base, prob=[None] * (g["ny"] * g["nx"]), states=[], available=False, note=note))
+        a, x, g, ev = arrays(run), m["_x"], m["grid"], events[type]
+        base = {"type": type, "lead": lead, "threshold": ev["threshold"],
+                "calibrated": bool(x.get("extremeCalibrated")), "method": x.get("extremeMethod")}
+        if not ev.get("available") or f"p_{type}" not in a:
+            return _out(A.ExtremeMap(**base, prob=[None] * (g["ny"] * g["nx"]), states=[], available=False,
+                                     note=ev.get("note") or "Not produced for this run."))
         prob = a[f"p_{type}"][li]
         idx = _states(g["lat0"], g["lon0"], g["step"], g["ny"], g["nx"])
-        note = None
-        if type.startswith("rain"):
-            thr = x.get("thresholds", {}).get(type)
-            note = (f"{g['step']}° cells are ~{round(g['step'] * 111)} km area means; "
-                    f"{thr} mm in 24 h is rarely reached at this scale.")
         return _out(A.ExtremeMap(**base, prob=_list(prob, DIGITS["prob"]),
                                  states=[{**s, "pmax": round(s["pmax"], 3), "pmean": round(s["pmean"], 3)}
                                          for s in state_rollup(prob, idx)],
-                                 available=True, note=note))
+                                 available=True, note=ev.get("note")))
 
     @app.get("/api/cell")
     def cell(run: str, var: str, lead: int, i: int, j: int):

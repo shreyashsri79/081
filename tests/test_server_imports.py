@@ -22,7 +22,7 @@ def test_server_imports_without_science_stack(bundle_root):
         c = TestClient(create_app({str(bundle_root)!r}))
         r = c.get("/api/health"); assert r.status_code == 200, r.text
         r = c.get("/api/meteogram?run=hindcast-20200715&i=1&j=1"); assert r.status_code == 200, r.text
-        r = c.get("/api/extremes?run=hindcast-20200715&type=rain64&lead=1"); assert r.status_code == 200, r.text
+        r = c.get("/api/extremes?run=hindcast-20200715&type=rain_p95&lead=1"); assert r.status_code == 200, r.text
         print(__import__("json").dumps({{"ok": True}}))
     """)
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=120)

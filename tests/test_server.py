@@ -63,8 +63,9 @@ def test_scorecard(client):
 
 
 def test_extremes(client):
-    x = get(client, f"/api/extremes?run={RUN}&type=rain64&lead=2", A.ExtremeMap)
-    assert x.available and x.calibrated is False and "uncalibrated" in x.method and len(x.prob) == 25
+    x = get(client, f"/api/extremes?run={RUN}&type=rain_p95&lead=2", A.ExtremeMap)
+    assert x.available and x.calibrated is True and "calibrated" in x.method and len(x.prob) == 25
+    assert "95th percentile" in x.threshold
     assert all(s.cells > 0 for s in x.states)
     heat = get(client, f"/api/extremes?run={RUN}&type=heat&lead=2", A.ExtremeMap)
     assert heat.available is False and "12 UTC" in heat.note and heat.states == []
@@ -89,6 +90,7 @@ def test_cell_and_meteogram(client):
     f"/api/cell?run={RUN}&var=t2m&lead=1&i=9&j=0",
     f"/api/meteogram?run={RUN}&i=0&j=-1",
     f"/api/extremes?run={RUN}&type=hail&lead=1",
+    f"/api/extremes?run={RUN}&type=rain64&lead=1",
     "/api/nothing-here",
 ])
 def test_404s(client, url):

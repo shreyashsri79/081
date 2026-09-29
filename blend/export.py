@@ -84,6 +84,7 @@ def fit_for_date(fc: xr.DataArray, obs: xr.DataArray, date, mode: str) -> dict:
     p["n_season"] = {str(k): int(v) for k, v in pd.Series(fc_tr.season.values).value_counts().items()}
     p["fold"] = name
     p["n_train"] = int(len(tr))
+    p["train_idx"] = tr
     return p
 
 
@@ -111,21 +112,19 @@ RUNG_ORDER = ["B3c", "B3", "B3s", "B2c", "B2", "B1"]  # covariance rungs where t
 def choose_rung(card: pd.DataFrame, var_name: str) -> tuple[str, str]:
     """The blend rung to ship for one variable (plan §5.3, extended with B3c / B2c), from that set's scorecard rows.
 
-    Eligible: not 'worse' than B0bc on at least 6 of the 10 leads. Ship the first eligible candidate whose mean
-    RMSE over leads is no higher than the next available candidate's; otherwise B1."""
+    Eligible: not 'worse' than B0bc on at least 6 of the 10 leads. Ship the eligible rung with the lowest mean
+    held-out RMSE over leads (ties go to the simpler rung, later in RUNG_ORDER); none eligible -> B1."""
     c = card[card["var"] == var_name]
     have = [r for r in RUNG_ORDER if r in set(c.rung)]
     mean = {r: float(c[c.rung == r].rmse.mean()) for r in have}
-    for i, r in enumerate(have):
-        rows = c[c.rung == r]
-        ok = int((rows["verdict_vs_B0bc"] != "worse").sum())
-        if ok < 6:
-            continue
-        nxt = have[i + 1] if i + 1 < len(have) else None
-        if nxt is None or mean[r] <= mean[nxt]:
-            vs = f"; mean RMSE {mean[r]:.4g} vs {nxt} {mean[nxt]:.4g}" if nxt else ""
-            return r, f"{r}: not worse than B0bc on {ok}/{len(rows)} leads{vs}"
-    return "B1", "no higher rung qualified; equal mean of bias-corrected models"
+    ok = {r: int((c[c.rung == r]["verdict_vs_B0bc"] != "worse").sum()) for r in have}
+    eligible = [r for r in have if ok[r] >= 6]
+    if not eligible:
+        return "B1", "no rung is at least level with the bias-corrected best model; equal mean of bias-corrected models"
+    best = min(reversed(eligible), key=lambda r: mean[r])     # reversed: ties resolve to the simpler rung
+    runner = sorted((mean[r], r) for r in eligible if r != best)
+    vs = f"; next {runner[0][1]} {runner[0][0]:.4g}" if runner else ""
+    return best, f"{best}: lowest mean held-out RMSE {mean[best]:.4g}{vs}; not worse than B0bc on {ok[best]}/10 leads"
 
 
 def validation_text(set_name: str) -> str:
@@ -204,8 +203,20 @@ def region_scores(fc: xr.DataArray, obs: xr.DataArray, mode: str, rung: str, var
 
 # ------------------------------------------------------------- run bundles (plan T6)
 
-EXTREMES = {"rain64": ("rain", 64.5), "rain115": ("rain", 115.6), "rain204": ("rain", 204.5), "wind15": ("wind", 15.0)}
-EXTREME_METHOD = "weighted vote of bias-corrected members (uncalibrated)"
+# Extremes come from blend/extremes.py (C7): per-cell truth threshold, per-model quantile-mapped thresholds,
+# weighted votes (B2c weights), calibration on the training folds. Display names for its events:
+EVENT_TEXT = {
+    ("rain", "p95"): ("Heavy rain (top 5 %)", "Heavy · top 5 %", "24 h rain above the cell's 95th percentile (training years)"),
+    ("rain", "p99"): ("Very heavy rain (top 1 %)", "Very heavy · top 1 %", "24 h rain above the cell's 99th percentile (training years)"),
+    ("rain", "25mm"): ("Rain ≥ 25 mm", "≥ 25 mm", "24 h rain ≥ 25 mm averaged over the grid cell"),
+    ("t2m", "p95"): ("Hot (top 5 %)", "Hot · top 5 %", "2 m temperature above the cell's 95th percentile (training years)"),
+    ("t2m", "p99"): ("Very hot (top 1 %)", "Very hot · top 1 %", "2 m temperature above the cell's 99th percentile (training years)"),
+    ("wind", "p95"): ("Strong wind (top 5 %)", "Wind · top 5 %", "10 m wind above the cell's 95th percentile (training years)"),
+    ("wind", "p99"): ("Very strong wind (top 1 %)", "Wind · top 1 %", "10 m wind above the cell's 99th percentile (training years)"),
+}
+EXTREME_METHOD = "quantile-mapped weighted vote of all models (B2c weights), calibrated on the training folds"
+HEAT_EVENT = {"id": "heat", "var": "t2m", "name": "Heat wave (IMD rule)", "short": "Heat wave",
+              "threshold": "IMD heat-wave criterion", "available": False}
 UI_ORDER = ["rain", "t2m", "wind", "mslp"]
 MODEL_ORDER = ["hres", "graphcast", "pangu", "fuxi", "gencast", "ifs", "aifs", "gfs"]
 REGIME_TEXT = {"normal": "Normal", "active": "Monsoon active", "break": "Monsoon break", "depression": "Depression",
@@ -295,12 +306,38 @@ def _wind_components(ctx: Context, set_name: str, models: list[str], date, w: np
     return out
 
 
+def event_probs(fc: xr.DataArray, obs: xr.DataArray, p: dict, date, ui: str) -> list[dict]:
+    """Calibrated event probabilities for one init date, exactly as extremes.run scores them on held-out folds:
+    thresholds, quantile-mapped model thresholds and the calibration table all come from the training inits."""
+    from . import extremes as X
+    tr = p["train_idx"]
+    fc_tr, obs_tr = fc.isel(init=tr), obs.isel(init=tr)
+    fc_d = fc.sel(init=[np.datetime64(pd.Timestamp(date), "ns")])
+    out = []
+    for name, kind, value in X.EVENTS.get(VAR_IDS[ui], []):
+        thr = X.truth_threshold(obs_tr, kind, value)
+        base = (obs_tr >= thr).where(obs_tr.notnull()).mean(["init", "lead"])
+        tau = X.model_thresholds(fc_tr, base)
+
+        def prob(f):
+            votes = (f >= tau).where(f.notnull())
+            return (votes * p["w_B2c"]).sum("model", skipna=False).transpose("init", "lead", ...)
+
+        ev_tr = (obs_tr >= thr).where(obs_tr.notnull()).transpose("init", "lead", ...)
+        table = X.fit_calibration(prob(fc_tr).values, ev_tr.values)
+        cal = X.apply_calibration(prob(fc_d).values, table)[0]              # (lead, lat, lon)
+        name_, short, text = EVENT_TEXT.get((ui, name), (f"{ui} {name}", f"{ui} {name}", f"{ui} event {name}"))
+        out.append({"id": f"{ui}_{name}", "var": ui, "name": name_, "short": short, "threshold": text,
+                    "available": True, "prob": cal.reshape(cal.shape[0], -1).astype(np.float32)})
+    return out
+
+
 def build_run(ctx: Context, date, out_root: Path, demo: bool = False) -> Path:
     """One hindcast bundle for init `date`: out-of-sample weights, blend, members, errors, interim extremes.
     demo=True marks the bundle as synthetic (generated inputs) so the dashboard labels it."""
     date = pd.Timestamp(date).normalize()
     run_id = f"hindcast-{date:%Y%m%d}"
-    steps, notes, arrays = [], [], {}
+    steps, notes, arrays, events = [], [], {}, []
     models_by_var, rungs, reasons, folds, sets_used, n_season, n_regime = {}, {}, {}, {}, {}, {}, {}
     grid = season = key = None
     sets = sets_for(date.year, ctx.cache)
@@ -347,12 +384,9 @@ def build_run(ctx: Context, date, out_root: Path, demo: bool = False) -> Path:
         arrays[f"mse_{ui}"] = _flat(mse * f * f, dims4)
         arrays[f"bias_{ui}"] = _flat(bias * f, dims4)
         arrays[f"obs_{ui}"] = _flat(to_display(ui, obs.sel(init=date)), dims3)
-        # interim extremes: weighted vote of bias-corrected members, NaN where any member is missing
-        members = to_display(ui, fc_bc)
-        for ex, (var, thr) in EXTREMES.items():
-            if var == ui:
-                vote = (members >= thr).astype(float).where(members.notnull())
-                arrays[f"p_{ex}"] = _flat((vote * w).sum("model", skipna=False).clip(0, 1), dims3)
+        for ev in event_probs(fc, obs, p, date, ui):
+            arrays[f"p_{ev['id']}"] = ev.pop("prob")
+            events.append(ev)
 
         g = _grid(fc)
         assert grid is None or g == grid, "all variables must share one grid"
@@ -393,11 +427,10 @@ def build_run(ctx: Context, date, out_root: Path, demo: bool = False) -> Path:
         "regime": {"season": season, "label": label_text, "basis": "init"},
         "rung": rungs.get("t2m", rungs[vars_[0]]),
         "steps": steps, "provenance": "synthetic" if demo else "measured", "notes": notes,
+        "extremes": events + [{**HEAT_EVENT, "note": HEAT_NOTE}],
         "_x": {"sets": sets_used, "folds": folds, "rungs": rungs, "rungReason": reasons, "regimeKey": key,
                "nSeason": n_season, "nRegime": n_regime, "k": C.K_SHRINK,
-               "thresholds": {k: v[1] for k, v in EXTREMES.items()}, "extremeMethod": EXTREME_METHOD,
-               "unavailable": {"heat": HEAT_NOTE, **{ex: f"{var} not built for this run."
-                                                     for ex, (var, _) in EXTREMES.items() if var not in vars_}},
+               "extremeMethod": EXTREME_METHOD, "extremeCalibrated": True,
                "codeCommit": _commit(),
                "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")},
     }

@@ -19,7 +19,7 @@ TOP = {
 INLINE = {
     ("Scorecard", "regions"): A.Region, ("ExtremeMap", "states"): A.ExtremeState,
     ("CellReport", "members"): A.Member, ("CellReport", "mseByLead"): A.MseByLead,
-    ("Meteogram", "vars"): A.MeteogramVar,
+    ("Meteogram", "vars"): A.MeteogramVar, ("Run", "extremes"): A.ExtremeInfo,
 }
 
 
