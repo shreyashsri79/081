@@ -9,6 +9,8 @@ Averaging smooths peaks, so extremes are not read from the blended mean. For eac
 Scored on held-out folds against: the best single model's vote, the blended mean, and climatology.
 """
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -31,7 +33,9 @@ BINS = np.linspace(0, 1, 11)
 def truth_threshold(obs, kind, value):
     if kind == "abs":
         return xr.full_like(obs.isel(init=0, lead=0, drop=True), value, dtype=float)
-    return obs.quantile(value, dim=["init", "lead"]).drop_vars("quantile")
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)   # ocean cells have no rain truth
+        return obs.quantile(value, dim=["init", "lead"]).drop_vars("quantile")
 
 
 def model_thresholds(fc, base_rate):
@@ -39,9 +43,12 @@ def model_thresholds(fc, base_rate):
     a = np.sort(fc.transpose("init", ...).values, axis=0)          # NaN sorts last
     n = np.isfinite(a).sum(0)
     br = np.broadcast_to(base_rate.values, n.shape)
-    idx = np.clip(np.ceil((1 - br) * n).astype(int) - 1, 0, np.maximum(n - 1, 0))
+    no_truth = ~np.isfinite(br)                                      # e.g. ocean cells for CHIRPS rain
+    brf = np.where(no_truth, 0.0, br)
+    idx = np.clip(np.ceil((1 - brf) * n).astype(int) - 1, 0, np.maximum(n - 1, 0))
     tau = np.take_along_axis(a, idx[None], axis=0)[0]
-    tau = np.where((br <= 0) | (n == 0), np.inf, tau)                # never observed: never vote
+    tau = np.where((brf <= 0) | (n == 0), np.inf, tau)               # never observed: never votes yes
+    tau = np.where(no_truth, np.nan, tau)                            # no truth here: no probability
     return xr.DataArray(tau, dims=fc.transpose("init", ...).dims[1:],
                         coords={d: fc[d] for d in fc.dims if d != "init"})
 
@@ -85,7 +92,7 @@ def _events_for_fold(fc_tr, obs_tr, fc_te, obs_te, p, kind, value):
     w = p["w_B2c"]
 
     def prob(fc):
-        votes = (fc >= tau).where(fc.notnull())
+        votes = (fc >= tau).where(fc.notnull() & tau.notnull())
         return (votes * w).sum("model", skipna=False).transpose("init", "lead", ...), votes
 
     p_tr, _ = prob(fc_tr)
