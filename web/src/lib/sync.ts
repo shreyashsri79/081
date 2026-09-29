@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
 import type { Grid } from './contract'
 import { useEvents, useRun, useRuns } from './api'
-import { START, useDesk } from './store'
+import { START, urlRun, useDesk } from './store'
+
+// The newest live run is chosen once per page load, so a run the user picks later is never overridden.
+let liveChosen = false
 
 const same = (a: Grid | null, b: Grid) =>
   !!a && a.lat0 === b.lat0 && a.lon0 === b.lon0 && a.step === b.step && a.ny === b.ny && a.nx === b.nx
@@ -28,7 +31,13 @@ export function useDeskSync() {
   }, [r, events, extreme, layer, set])
 
   useEffect(() => {
-    if (runs?.length && !runs.some((x) => x.id === run)) set({ run: runs[0].id, member: null })
+    if (!runs?.length) return
+    if (!urlRun && !liveChosen) {
+      liveChosen = true
+      const live = runs.filter((x) => x.kind === 'live').sort((a, b) => b.init.localeCompare(a.init))[0]
+      if (live && live.id !== run) { set({ run: live.id, member: null }); return }
+    }
+    if (!runs.some((x) => x.id === run)) set({ run: runs[0].id, member: null })
   }, [runs, run, set])
 
   useEffect(() => {

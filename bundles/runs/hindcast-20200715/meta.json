@@ -124,7 +124,7 @@
   "Rung per variable: rain B2c, t2m B2c, wind B3, mslp B3.",
   "Grid 1.5\u00b0 (~166 km); values are cell averages.",
   "Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon (12 UTC) value.",
-  "Wind particles unavailable: u/v components are not in the cache."
+  "Wind particles: u/v members blended with the wind-speed weights (direction only, no bias correction)."
  ],
  "extremes": [
   {

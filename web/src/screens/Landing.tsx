@@ -424,7 +424,7 @@ function Pipeline() {
   return (
     <section id="how" className="px-4 py-16 sm:px-8">
       <Reveal><div className="label text-ink-2">How it blends</div></Reveal>
-      <Reveal><h2 className="t-section mt-3 max-w-[18ch]">Six steps, designed to run every morning at 06:00 IST.</h2></Reveal>
+      <Reveal><h2 className="t-section mt-3 max-w-[18ch]">Six steps, run every afternoon at 15:00 IST.</h2></Reveal>
       <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
         <div className="flex flex-col">
           {STEPS.map((s, k) => (
@@ -589,7 +589,7 @@ function Different() {
 const VOCAB = [
   'IFS HRES', 'GraphCast', 'Pangu-Weather', 'FuXi', 'GenCast', 'ECMWF AIFS', 'NOAA GFS', 'NCUM', 'NEPS-G · 23 members',
   'ERA5', 'CHIRPS 0.05°', '64.5 mm', '115.6 mm', '204.5 mm', 'JJAS', 'active / break', 'western disturbance',
-  'LOYO 2018 · 2020 · 2022', 'λ = 0.95', 'k = 20', 'block bootstrap · 1,000', 'FSS', 'Brier skill', '06:00 IST',
+  'LOYO 2018 · 2020 · 2022', 'λ = 0.95', 'k = 20', 'block bootstrap · 1,000', 'FSS', 'Brier skill', '15:00 IST daily',
 ]
 
 export default function Landing() {
