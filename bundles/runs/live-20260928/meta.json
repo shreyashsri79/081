@@ -65,32 +65,32 @@
   {
    "name": "fetch ifs 00 UTC Day 1-10",
    "status": "ok",
-   "seconds": 4.69
+   "seconds": 4.0
   },
   {
    "name": "fetch aifs 00 UTC Day 1-10",
    "status": "ok",
-   "seconds": 4.37
+   "seconds": 2.82
   },
   {
    "name": "fetch gfs 00 UTC Day 1-10",
    "status": "ok",
-   "seconds": 2.44
+   "seconds": 1.95
   },
   {
    "name": "verify 6 earlier forecasts against the IFS analysis; update online weights (B4)",
    "status": "ok",
-   "seconds": 0.8
+   "seconds": 0.52
   },
   {
    "name": "blend (B4) + extreme probabilities",
    "status": "ok",
-   "seconds": 0.12
+   "seconds": 0.08
   },
   {
    "name": "write bundle",
    "status": "ok",
-   "seconds": 13.19
+   "seconds": 10.76
   }
  ],
  "provenance": "measured",
@@ -108,6 +108,62 @@
   "Live verification mslp (RMSE hPa, Day 1, 2 day(s) vs IFS analysis): blend 0.60, ifs 0.55, aifs 0.66, gfs 1.45."
  ],
  "extremes": [
+  {
+   "id": "t2m_p95",
+   "var": "t2m",
+   "name": "Hot (top 5 %)",
+   "short": "Hot \u00b7 top 5 %",
+   "threshold": "2 m temperature above the cell's 95th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "t2m_p99",
+   "var": "t2m",
+   "name": "Very hot (top 1 %)",
+   "short": "Very hot \u00b7 top 1 %",
+   "threshold": "2 m temperature above the cell's 99th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "wind_p95",
+   "var": "wind",
+   "name": "Strong wind (top 5 %)",
+   "short": "Wind \u00b7 top 5 %",
+   "threshold": "10 m wind above the cell's 95th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "wind_p99",
+   "var": "wind",
+   "name": "Very strong wind (top 1 %)",
+   "short": "Wind \u00b7 top 1 %",
+   "threshold": "10 m wind above the cell's 99th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "rain_p95",
+   "var": "rain",
+   "name": "Heavy rain (top 5 %)",
+   "short": "Heavy \u00b7 top 5 %",
+   "threshold": "24 h rain above the cell's 95th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "rain_p99",
+   "var": "rain",
+   "name": "Very heavy rain (top 1 %)",
+   "short": "Very heavy \u00b7 top 1 %",
+   "threshold": "24 h rain above the cell's 99th percentile (training years)",
+   "available": true
+  },
+  {
+   "id": "rain_25mm",
+   "var": "rain",
+   "name": "Rain \u2265 25 mm",
+   "short": "\u2265 25 mm",
+   "threshold": "24 h rain \u2265 25 mm averaged over the grid cell",
+   "available": true
+  },
   {
    "id": "heat",
    "var": "t2m",
@@ -139,9 +195,9 @@
    "mslp": 0.3,
    "rain": 0.0
   },
-  "extremeCalibrated": false,
+  "extremeCalibrated": true,
   "extremeMethod": "quantile-mapped weighted vote of the live models (training-counterpart thresholds), calibrated",
   "modelFile": "/kaggle/working/artifacts",
-  "created": "2026-09-29T15:14:46+00:00"
+  "created": "2026-09-29T17:31:20+00:00"
  }
 }
