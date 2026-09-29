@@ -1,0 +1,46 @@
+"""C2 Harmonise: same grid, units, cases and valid time for every model."""
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+from . import config as C
+
+
+def to_display_units(ds: xr.Dataset) -> xr.Dataset:
+    """Precipitation m -> mm. Temperature stays in K."""
+    if C.RAIN in ds:
+        ds = ds.assign({C.RAIN: ds[C.RAIN] * 1000.0})
+    return ds
+
+
+def stack_models(forecasts: dict, var: str) -> xr.DataArray:
+    """{model: Dataset} -> DataArray (model, init, lead, latitude, longitude) on the inits all models share."""
+    arrays = [ds[var].expand_dims(model=[m]) for m, ds in forecasts.items() if var in ds]
+    return xr.concat(arrays, "model", join="inner")
+
+
+def align_truth(fc: xr.DataArray, truth: xr.DataArray) -> xr.DataArray:
+    """Truth at valid = init + lead, dims (init, lead, latitude, longitude)."""
+    lead = xr.DataArray(pd.to_timedelta(fc.lead.values, unit="D"), dims="lead", coords={"lead": fc.lead})
+    valid = (fc.init + lead).transpose("init", "lead")
+    # reindex first so valid times past the end of the truth archive become NaN instead of a KeyError
+    obs = truth.reindex(time=np.unique(valid.values)).sel(time=valid)
+    return obs.drop_vars("time").assign_coords(valid=valid)
+
+
+def common_mask(fc: xr.DataArray, obs: xr.DataArray):
+    """Drop a cell/case if any model or the truth is missing, so every model is scored on the same cases."""
+    ok = fc.notnull().all("model") & obs.notnull()
+    return fc.where(ok), obs.where(ok), ok
+
+
+def prepare(forecasts: dict, truth: xr.Dataset, var: str):
+    """Everything C2 does for one variable. Returns (fc, obs) ready for training."""
+    fc = stack_models({m: to_display_units(ds) for m, ds in forecasts.items()}, var)
+    tr = to_display_units(truth)[var]
+    obs = align_truth(fc, tr)
+    fc, obs, _ = common_mask(fc, obs)
+    fc = fc.assign_coords(season=("init", [C.SEASON_OF_MONTH[m] for m in pd.DatetimeIndex(fc.init.values).month]))
+    obs = obs.assign_coords(season=fc.season)
+    return fc, obs

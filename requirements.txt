@@ -1,0 +1,8 @@
+xarray>=2024.1
+numpy
+pandas
+dask
+zarr>=2.18,<3
+gcsfs
+netcdf4
+matplotlib
