@@ -6,7 +6,9 @@ Rungs built here (MVP, spec §5.6):
   B0bc     best bias-corrected single model per lead, chosen on training (fair bar after bias correction)
   B1       equal mean of bias-corrected models
   B2       inverse-MSE weights per cell x lead
-  B3s      B2 + season (shrunk toward B2)             -- regime axis is added in B3 proper
+  B2raw    B2 on raw forecasts, no bias correction      (does bias correction help?)
+  B3s      B2 + season (shrunk toward B2)
+  B3       B2 + season + weather regime of the init day (shrunk toward B3s)   -- the core claim
 """
 
 import numpy as np
@@ -15,9 +17,10 @@ import xarray as xr
 
 from . import config as C
 from .skill import apply_bias, fit_bias, fit_mse
+from .regimes import all_keys
 from .weights import blend, inverse_mse
 
-BLENDS = ["B1", "B2", "B3s"]
+BLENDS = ["B1", "B2", "B2raw", "B3s", "B3"]
 
 
 def lat_weights(da: xr.DataArray) -> xr.DataArray:
@@ -55,17 +58,20 @@ def fit(fc: xr.DataArray, obs: xr.DataArray, alpha: float = C.ALPHA, k: float = 
     """Fit every table on the given (training) inits."""
     bias = fit_bias(fc, obs)
     fc_bc = apply_bias(fc, bias)
-    mse2 = fit_mse(fc_bc, obs, by_season=False, k=k, size=size)
-    mse3 = fit_mse(fc_bc, obs, by_season=True, k=k, size=size)
+    has_regime = "regime_key" in fc.coords
     raw_rmse = np.sqrt(domain_se(fc, obs).mean("init"))           # (model, lead)
     bc_rmse = np.sqrt(domain_se(fc_bc, obs).mean("init"))
-    return {
+    p = {
         "bias": bias,
-        "w_B2": inverse_mse(mse2, alpha),
-        "w_B3s": inverse_mse(mse3, alpha),
+        "w_B2": inverse_mse(fit_mse(fc_bc, obs, "all", k=k, size=size), alpha),
+        "w_B2raw": inverse_mse(fit_mse(fc, obs, "all", k=k, size=size), alpha),
+        "w_B3s": inverse_mse(fit_mse(fc_bc, obs, "season", k=k, size=size), alpha),
         "best_raw": raw_rmse.idxmin("model"),                     # (lead,) model name
         "best_bc": bc_rmse.idxmin("model"),
     }
+    if has_regime:
+        p["w_B3"] = inverse_mse(fit_mse(fc_bc, obs, "regime", k=k, size=size, keys=all_keys()), alpha)
+    return p
 
 
 def predict(fc: xr.DataArray, p: dict) -> dict:
@@ -76,7 +82,10 @@ def predict(fc: xr.DataArray, p: dict) -> dict:
     out["B0bc"] = fc_bc.sel(model=p["best_bc"]).drop_vars("model")
     out["B1"] = fc_bc.mean("model", skipna=False)
     out["B2"] = blend(fc_bc, p["w_B2"])
+    out["B2raw"] = blend(fc, p["w_B2raw"])
     out["B3s"] = blend(fc_bc, p["w_B3s"])
+    if "w_B3" in p:
+        out["B3"] = blend(fc_bc, p["w_B3"])
     return out
 
 
@@ -154,3 +163,25 @@ def headline(card: pd.DataFrame, var: str, lead_day: int = 3, ref: str = "B0") -
             f"{best.rmse:.3f} {unit} ({best[f'pct_vs_{ref}']:+.1f} %, 95 % CI "
             f"[{best[f'lo_vs_{ref}']:+.3f}, {best[f'hi_vs_{ref}']:+.3f}] {unit}; {verdict}), "
             f"held-out folds, n = {int(best.n_days)} days.")
+
+
+def regime_scorecard(se: xr.DataArray, var: str, set_name: str, lead_day: int = 3,
+                     rungs=("B0", "B2", "B3s", "B3"), ref: str = "B2", min_days: int = 15, **boot_kw) -> pd.DataFrame:
+    """RMSE per weather regime of the init day, and B3 vs B2: does conditioning on the regime pay off?"""
+    s = se.sel(lead=lead_day)
+    rows = []
+    for key in np.unique(s.regime_key.values):
+        sub = s.isel(init=np.flatnonzero(s.regime_key.values == key))
+        n = int(np.isfinite(sub.sel(rung=ref).values).sum())
+        if n < min_days:
+            continue
+        row = {"set": set_name, "var": var, "lead_day": lead_day, "regime_key": str(key), "n_days": n}
+        for r in rungs:
+            if r in sub.rung.values:
+                row[f"rmse_{r}"] = float(np.sqrt(np.nanmean(sub.sel(rung=r).values)))
+        if "B3" in sub.rung.values:
+            d, lo, hi = block_bootstrap(sub.sel(rung="B3").values, sub.sel(rung=ref).values, **boot_kw)
+            row.update({"pct_B3_vs_B2": 100 * d / row[f"rmse_{ref}"], "lo": lo, "hi": hi,
+                        "verdict": "beats" if hi < 0 else ("worse" if lo > 0 else "matches")})
+        rows.append(row)
+    return pd.DataFrame(rows)

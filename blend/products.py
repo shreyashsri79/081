@@ -47,6 +47,23 @@ def weight_maps(w: xr.DataArray, title: str, path: str):
     plt.close(fig)
 
 
+def weight_diff_maps(dw: xr.DataArray, title: str, path: str):
+    """Change in each model's weight between two situations; dw dims (model, latitude, longitude)."""
+    models = list(dw.model.values)
+    lim = max(float(np.nanpercentile(np.abs(dw), 98)), 0.02)
+    fig, axes = plt.subplots(1, len(models), figsize=(4.2 * len(models), 4), constrained_layout=True)
+    for ax, m in zip(np.atleast_1d(axes), models):
+        pc = ax.pcolormesh(dw.longitude, dw.latitude, dw.sel(model=m), vmin=-lim, vmax=lim, cmap="PuOr_r",
+                           shading="nearest")
+        _coast(ax)
+        ax.set_title(m, color=MODEL_COLOURS.get(m, "k"), fontweight="bold")
+        ax.set_aspect("equal")
+    fig.colorbar(pc, ax=axes, shrink=0.8, label="weight change")
+    fig.suptitle(title)
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
 def dominant_map(w: xr.DataArray, title: str, path: str):
     from matplotlib.colors import ListedColormap
     models = list(w.model.values)

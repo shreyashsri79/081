@@ -35,12 +35,16 @@ def common_mask(fc: xr.DataArray, obs: xr.DataArray):
     return fc.where(ok), obs.where(ok), ok
 
 
-def prepare(forecasts: dict, truth: xr.Dataset, var: str):
-    """Everything C2 does for one variable. Returns (fc, obs) ready for training."""
+def prepare(forecasts: dict, truth: xr.Dataset, var: str, regime_labels: pd.DataFrame | None = None):
+    """Everything C2 does for one variable. Returns (fc, obs) ready for training.
+
+    Adds coords along init: `season`, and `regime_key` ('SEASON:regime' of the init day) if labels are given."""
     fc = stack_models({m: to_display_units(ds) for m, ds in forecasts.items()}, var)
     tr = to_display_units(truth)[var]
     obs = align_truth(fc, tr)
     fc, obs, _ = common_mask(fc, obs)
-    fc = fc.assign_coords(season=("init", [C.SEASON_OF_MONTH[m] for m in pd.DatetimeIndex(fc.init.values).month]))
-    obs = obs.assign_coords(season=fc.season)
-    return fc, obs
+    coords = {"season": ("init", [C.SEASON_OF_MONTH[m] for m in pd.DatetimeIndex(fc.init.values).month])}
+    if regime_labels is not None:
+        from .regimes import regime_keys
+        coords["regime_key"] = ("init", regime_keys(fc.init.values, regime_labels))
+    return fc.assign_coords(coords), obs.assign_coords(coords)

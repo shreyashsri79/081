@@ -48,6 +48,16 @@ SEASON_OF_MONTH = {1: "JF", 2: "JF", 3: "MAM", 4: "MAM", 5: "MAM",
                    6: "JJAS", 7: "JJAS", 8: "JJAS", 9: "JJAS", 10: "OND", 11: "OND", 12: "OND"}
 SEASONS = ["JF", "MAM", "JJAS", "OND"]
 
+# Weather regimes (spec §5.4). Climatology years contain no test year, so anomalies never see test data.
+CLIM_YEARS = (2003, 2017)
+REGIME_BOXES = {                      # (lat0, lat1, lon0, lon1)
+    "cmz": (18, 28, 65, 88),          # Core Monsoon Zone (Rajeevan et al. 2010): active / break
+    "nw": (28, 37, 70, 80),           # NW India rain in Dec-Apr: western disturbance proxy
+    "heat": (20, 30, 70, 85),         # NW + central India afternoon T2m: heat regime
+    "bay": (15, 26, 78, 92),          # Bay of Bengal / central India MSLP minimum: depression
+}
+REGIMES = ["normal", "active", "break", "depression", "western_disturbance", "heat"]
+
 # Hyperparameters (spec §12)
 ALPHA = 1.0          # weight temperature: w ∝ (1/MSE)^ALPHA
 K_SHRINK = 20        # shrinkage of a sparse bin toward its parent, in cases
