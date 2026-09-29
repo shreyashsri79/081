@@ -10,6 +10,8 @@ import xarray as xr
 # One fixed colour per model across every chart (Okabe-Ito)
 MODEL_COLOURS = {"hres": "#0072B2", "graphcast": "#E69F00", "pangu": "#009E73",
                  "fuxi": "#CC79A7", "gencast": "#D55E00", "aifs": "#56B4E9", "gfs": "#999999"}
+# Reference and blend rungs: greys for references, one strong colour for the shipped blend
+RUNG_COLOURS = {"B0": "#6B7280", "B0bc": "#374151", "B1": "#A78BFA", "B2": "#7C3AED", "B3s": "#C1121F"}
 
 
 def _coast(ax):
@@ -28,11 +30,14 @@ def _coast(ax):
 
 
 def weight_maps(w: xr.DataArray, title: str, path: str):
-    """One panel per model; w dims (model, latitude, longitude)."""
+    """One panel per model; w dims (model, latitude, longitude). Colour range fitted to the data so
+    differences between models are visible (a 0-1 scale washes them out)."""
     models = list(w.model.values)
+    vmax = float(np.ceil(float(w.max()) * 10) / 10)
     fig, axes = plt.subplots(1, len(models), figsize=(4.2 * len(models), 4), constrained_layout=True)
     for ax, m in zip(np.atleast_1d(axes), models):
-        pc = ax.pcolormesh(w.longitude, w.latitude, w.sel(model=m), vmin=0, vmax=1, cmap="viridis", shading="nearest")
+        pc = ax.pcolormesh(w.longitude, w.latitude, w.sel(model=m), vmin=0, vmax=vmax, cmap="viridis",
+                           shading="nearest")
         _coast(ax)
         ax.set_title(m, color=MODEL_COLOURS.get(m, "k"), fontweight="bold")
         ax.set_aspect("equal")
@@ -78,7 +83,8 @@ def rmse_vs_lead(card, var: str, rungs, path: str):
     for r in rungs:
         d = c[c.rung == r].sort_values("lead_day")
         name = r.split(":")[-1]
-        style = {"color": MODEL_COLOURS[name], "ls": "--"} if name in MODEL_COLOURS else {"lw": 2.5}
+        style = {"color": MODEL_COLOURS[name], "ls": "--"} if name in MODEL_COLOURS else \
+            {"lw": 2.5, "color": RUNG_COLOURS.get(name, "k")}
         ax.plot(d.lead_day, d.rmse, marker="o", label=r, **style)
     ax.set_xlabel("lead (days)")
     ax.set_ylabel("RMSE")
