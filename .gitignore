@@ -5,3 +5,4 @@ data/
 cache/
 artifacts/
 .venv/
+bundles/**/*.tmp

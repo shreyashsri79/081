@@ -1,0 +1,8 @@
+# Backend server and tests (BACKEND_BUILD_PLAN.md T1). The server itself needs only numpy + FastAPI;
+# the exporter and tests also use the science stack in requirements.txt.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+orjson>=3.10
+pytest>=8
+httpx>=0.27
