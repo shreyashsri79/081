@@ -80,6 +80,21 @@ python -m blend.live run --bundles bundles
 ```
 GitHub Actions (`.github/workflows/live-run.yml`) runs this every day at 09:30 UTC and commits the new bundle.
 
+With NCMRWF's own models (GRIB2 files of the same 00 UTC run; not public):
+```
+python -m blend.live run --bundles bundles --ncum /data/ncum/2026093000 --nepsg /data/nepsg/2026093000
+```
+
+**Products** (with the API running): `/api/export/geojson?run=<id>[&lead=<day>]` (grid cells with blended values,
+dominant model and extreme probabilities), `/api/export/csv?run=<id>` (state table). NetCDF of a whole run:
+`python -m blend.deliver <run id>`. The Run log screen links the first two.
+
+**One-off static files** (already in `models/`; rebuild only if the grid changes, needs `zarr` + `gcsfs`):
+```
+python -m blend.heatwave build-static        # models/live_static.nc: ERA5 12 UTC normals, orography, land-sea mask
+python -m blend.live_regime build-clim       # models/live_regime.nc: ERA5 regime indices 2003-2017
+```
+
 **Training** (Kaggle, CPU, Internet on): see `KAGGLE_GUIDE.md`. One cell:
 ```
 !git clone -q https://github.com/shreyashsri79/081 && cd 081 && pip install -q gcsfs "zarr>=2.18,<3" && python run_all.py
@@ -93,10 +108,12 @@ python -m blend.live build-model --art /kaggle/working/artifacts --cache /kaggle
 
 | Path | What |
 |---|---|
-| `blend/` | Engine: `sources` (WB2 ingest), `harmonise`, `chirps`, `regimes`, `skill`, `weights`, `verify`, `extremes`, `live`, `export`, `server` |
+| `blend/` | Engine: `sources` (WB2 ingest), `harmonise`, `chirps`, `regimes`, `skill`, `weights`, `verify`, `extremes`, `live`, `heatwave`, `live_regime`, `adapters` (NCUM / NEPS-G), `export`, `deliver` (GeoJSON / CSV / NetCDF), `server` |
 | `run_all.py` | Training + held-out verification + dashboard bundles, one command |
 | `models/live_model.nc` | Learned covariance, bias and extreme tables used by the live run |
 | `models/live_state.nc` | Online (B4) error statistics, updated by every live run |
+| `models/live_static.nc` | ERA5 1990–2019 normal 12 UTC temperature, orography, land-sea mask (heat-wave rule) |
+| `models/live_regime.nc` | ERA5 regime indices 2003–2017 (live regime label) |
 | `bundles/` | Runs served to the dashboard: 12 hindcasts + the last 10 live days; `live_verification.json` |
 | `web/` | React + MapLibre dashboard |
 | `notebooks/` | Step-by-step Kaggle notebooks (same code as `run_all.py`) |
@@ -107,5 +124,10 @@ python -m blend.live build-model --art /kaggle/working/artifacts --cache /kaggle
   GFS has no training counterpart and earns weight only as its own verified days accumulate.
 - Live verification uses the IFS analysis as truth, which favours IFS. Hindcast scores use ERA5 / CHIRPS.
 - The grid is 1.5° (~167 km cells). IMD point thresholds (e.g. 64.5 mm) therefore become per-cell percentiles.
-  The IMD heat-wave rule needs an afternoon value and is not produced yet.
-- NCUM / NEPS-G are not public. The loader interface is ready for them; weights need NCMRWF data.
+- Heat wave (live runs only): the IMD rule is applied per cell to 12 UTC (17:30 IST) 2 m temperature against ERA5
+  12 UTC normals. A cell mean at 17:30 IST runs below a station's maximum, so the absolute thresholds (40 / 45 /
+  47 °C) trigger less often than at stations. The probability is uncalibrated: training holds no afternoon truth.
+- The live regime label uses proxies (yesterday's Day-1 forecast for "observed" rain and afternoon temperature);
+  weights do not depend on it.
+- NCUM / NEPS-G are not public. The adapter is tested on generated GRIB2 files, not on NCMRWF output; their
+  weights start from HRES skill with a 1.5x error and learn from their own verified days.

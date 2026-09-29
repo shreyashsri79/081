@@ -113,3 +113,12 @@ def test_serves_built_dashboard(tmp_path, bundle_root):
     assert c.get("/assets/a.js").text == "js"
     assert c.get("/api/health").json()["status"] == "ok"
     assert c.get("/api/unknown").status_code == 404
+
+
+def test_cors_allows_browser_reads(client):
+    r = client.get("/api/health", headers={"Origin": "https://example.org"})
+    assert r.headers["access-control-allow-origin"] == "*"
+    pre = client.options("/api/runs", headers={"Origin": "https://example.org", "Access-Control-Request-Method": "GET"})
+    assert pre.status_code == 200 and "GET" in pre.headers["access-control-allow-methods"]
+    bad = client.options("/api/runs", headers={"Origin": "https://example.org", "Access-Control-Request-Method": "POST"})
+    assert bad.status_code == 400

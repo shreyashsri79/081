@@ -166,13 +166,15 @@ function truthAt(s: Scenario, v: VarId, lead: number, lon: number, lat: number, 
 
 // --------------------------------------------------------------- skill
 
-const SEEDS: Record<ModelId, number> = { hres: 101, graphcast: 202, pangu: 303, fuxi: 404, gencast: 505, ifs: 101, aifs: 606, gfs: 707 }
+const SEEDS: Record<ModelId, number> = { hres: 101, graphcast: 202, pangu: 303, fuxi: 404, gencast: 505, ifs: 101, aifs: 606, gfs: 707, ncum: 808, nepsg: 909 }
 /** RMSE at Day 1 for a typical model, per variable. */
 const BASE_RMSE: Record<VarId, number> = { rain: 6, t2m: 1.25, wind: 1.35, mslp: 1.05 }
 /** Lead growth: GraphCast leads early, GenCast (an ensemble mean) late. */
 const GROWTH: Record<ModelId, [number, number]> = {
   hres: [1, 0.3], graphcast: [0.84, 0.29], pangu: [0.95, 0.31], fuxi: [1.02, 0.24], gencast: [1.08, 0.2],
   ifs: [1, 0.3], aifs: [0.98, 0.26], gfs: [1.12, 0.33],
+  // NCMRWF models never appear in synthetic runs; entries exist only because every model id needs one.
+  ncum: [1.1, 0.32], nepsg: [1.1, 0.24],
 }
 const BIAS: Record<ModelId, Record<VarId, number>> = {
   hres: { rain: 1.2, t2m: -0.4, wind: 0.2, mslp: 0.3 },
@@ -183,6 +185,8 @@ const BIAS: Record<ModelId, Record<VarId, number>> = {
   ifs: { rain: 1.1, t2m: -0.5, wind: 0.2, mslp: 0.3 },
   aifs: { rain: -2.4, t2m: 0.3, wind: -0.3, mslp: -0.2 },
   gfs: { rain: 3.1, t2m: 1.1, wind: 0.7, mslp: -0.6 },
+  ncum: { rain: 0, t2m: 0, wind: 0, mslp: 0 },
+  nepsg: { rain: 0, t2m: 0, wind: 0, mslp: 0 },
 }
 
 function mseAt(s: Scenario, model: ModelId, v: VarId, lead: number, lon: number, lat: number, inIndia: boolean): number {

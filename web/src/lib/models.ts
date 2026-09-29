@@ -20,6 +20,9 @@ export const MODELS: Record<ModelId, ModelInfo> = {
   ifs: { id: 'ifs', name: 'ECMWF IFS (open)', short: 'IFS', family: 'Physics NWP', colour: '#0072b2' },
   aifs: { id: 'aifs', name: 'ECMWF AIFS', short: 'AIFS', family: 'AI', colour: '#56b4e9' },
   gfs: { id: 'gfs', name: 'NOAA GFS', short: 'GFS', family: 'Physics NWP', colour: '#6b5b45' },
+  // NCMRWF's own models, used when NCMRWF shares GRIB2 files (blend/adapters.py).
+  ncum: { id: 'ncum', name: 'NCMRWF NCUM', short: 'NCUM', family: 'Physics NWP', colour: '#882255' },
+  nepsg: { id: 'nepsg', name: 'NCMRWF NEPS-G (mean)', short: 'NEPS-G', family: 'Physics NWP', colour: '#44aa99' },
 }
 
 export const BLEND_COLOUR = '#0e2129'

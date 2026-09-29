@@ -3,6 +3,7 @@
     BLEND_BUNDLES=bundles uvicorn blend.server:app --port 8081
     BLEND_BUNDLES=bundles BLEND_WEB_DIST=web/dist uvicorn blend.server:app --port 8081   # API + built dashboard
 
+Besides the contract endpoints it serves downloads (blend/deliver.py): /api/export/geojson and /api/export/csv.
 No science happens here: bundles are already in display units. Only numpy, FastAPI and the bundle/geo helpers are
 imported, so the server starts fast and runs with no network (tests/test_server_imports.py enforces it).
 """
@@ -15,11 +16,13 @@ from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from . import api_models as A
 from . import bundle as B
+from . import deliver as D
 from .geo import state_index, state_rollup
 
 UNITS = {"rain": "mm", "t2m": "°C", "wind": "m/s", "mslp": "hPa"}
@@ -48,6 +51,11 @@ def create_app(bundles: Path | str | None = None, web_dist: Path | str | None = 
     dist = Path(dist).resolve() if dist else None
     app = FastAPI(title="Samanvay API", version=A.CONTRACT_VERSION, docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    # Read-only public data: other sites may call the API from the browser. BLEND_CORS_ORIGINS narrows it
+    # (comma-separated origins); no cookies or credentials are ever accepted.
+    origins = [o.strip() for o in os.environ.get("BLEND_CORS_ORIGINS", "*").split(",") if o.strip()]
+    app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET"], allow_headers=["*"],
+                       allow_credentials=False, max_age=86400)
 
     # ------------------------------------------------------------ reads (T7)
 
@@ -172,7 +180,8 @@ def create_app(bundles: Path | str | None = None, web_dist: Path | str | None = 
         li = lead_of(m, lead)
         a, x, g, ev = arrays(run), m["_x"], m["grid"], events[type]
         base = {"type": type, "lead": lead, "threshold": ev["threshold"],
-                "calibrated": bool(x.get("extremeCalibrated")), "method": x.get("extremeMethod")}
+                "calibrated": bool(x.get("extremeCalibrated")) and type not in (x.get("uncalibrated") or []),
+                "method": (x.get("eventMethod") or {}).get(type, x.get("extremeMethod"))}
         if not ev.get("available") or f"p_{type}" not in a:
             return _out(A.ExtremeMap(**base, prob=[None] * (g["ny"] * g["nx"]), states=[], available=False,
                                      note=ev.get("note") or "Not produced for this run."))
@@ -212,6 +221,26 @@ def create_app(bundles: Path | str | None = None, web_dist: Path | str | None = 
                                      "weights": _list(a[f"w_{v}"][n, :, k], 4)} for n, md in enumerate(models)]})
         return _out(A.Meteogram(i=i, j=j, lat=g["lat0"] + i * g["step"], lon=g["lon0"] + j * g["step"],
                                 leads=m["leads"], vars=out))
+
+    # ------------------------------------------------------- products (C9)
+
+    def _attachment(name: str) -> dict:
+        return {"Content-Disposition": f'attachment; filename="{name}"'}
+
+    @app.get("/api/export/geojson")
+    def export_geojson(run: str, lead: int | None = None):
+        m = meta(run)
+        if lead is not None:
+            lead_of(m, lead)
+        body = D.geojson(m, arrays(run), lead)
+        name = f"{run}{'' if lead is None else f'_d{lead}'}.geojson"
+        return JSONResponse(body, media_type="application/geo+json", headers=_attachment(name))
+
+    @app.get("/api/export/csv")
+    def export_csv(run: str):
+        m = meta(run)
+        return Response(D.states_csv(m, arrays(run)), media_type="text/csv; charset=utf-8",
+                        headers=_attachment(f"{run}_states.csv"))
 
     @app.get("/api/{rest:path}")
     def api_404(rest: str):

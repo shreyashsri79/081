@@ -14,7 +14,7 @@
  * Server side: blend/api_models.py (pydantic, same fields, camelCase on the wire).
  */
 
-export type ModelId = 'hres' | 'graphcast' | 'pangu' | 'fuxi' | 'gencast' | 'ifs' | 'aifs' | 'gfs'
+export type ModelId = 'hres' | 'graphcast' | 'pangu' | 'fuxi' | 'gencast' | 'ifs' | 'aifs' | 'gfs' | 'ncum' | 'nepsg'
 export type VarId = 'rain' | 't2m' | 'wind' | 'mslp'
 /** Engine runs name their events (Run.extremes, e.g. 'rain_p95'); the synthetic source uses lib/models EXTREMES. */
 export type ExtremeId = string

@@ -1,5 +1,5 @@
 import { Panel } from '@/components/Controls'
-import { useRun, useRuns } from '@/lib/api'
+import { useRun, useRuns, useSource } from '@/lib/api'
 import { MODELS } from '@/lib/models'
 import { useDesk } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -11,6 +11,7 @@ export default function RunLog() {
   const { run, set } = useDesk()
   const runs = useRuns().data ?? []
   const r = useRun(run).data
+  const engine = useSource().data === 'http'
 
   return (
     <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -66,6 +67,18 @@ export default function RunLog() {
               <span className="mono">{r.steps.reduce((a, s) => a + s.seconds, 0)} s</span>
             </li>
           </ol>
+        )}
+        {r && engine && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-rule px-3 py-2.5 text-[12.5px]">
+            <span className="label text-ink-3">Download</span>
+            <a className="underline decoration-rule underline-offset-2 hover:decoration-ink" href={`/api/export/geojson?run=${encodeURIComponent(r.id)}`} download>
+              GeoJSON · all leads
+            </a>
+            <a className="underline decoration-rule underline-offset-2 hover:decoration-ink" href={`/api/export/csv?run=${encodeURIComponent(r.id)}`} download>
+              State table · CSV
+            </a>
+            <span className="text-[11.5px] text-ink-3">NetCDF: <span className="mono">python -m blend.deliver {r.id}</span></span>
+          </div>
         )}
       </Panel>
     </div>

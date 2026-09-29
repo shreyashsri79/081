@@ -218,7 +218,7 @@ EXTREME_METHOD = "quantile-mapped weighted vote of all models (B2c weights), cal
 HEAT_EVENT = {"id": "heat", "var": "t2m", "name": "Heat wave (IMD rule)", "short": "Heat wave",
               "threshold": "IMD heat-wave criterion", "available": False}
 UI_ORDER = ["rain", "t2m", "wind", "mslp"]
-MODEL_ORDER = ["hres", "graphcast", "pangu", "fuxi", "gencast", "ifs", "aifs", "gfs"]
+MODEL_ORDER = ["hres", "graphcast", "pangu", "fuxi", "gencast", "ifs", "aifs", "gfs", "ncum", "nepsg"]
 REGIME_TEXT = {"normal": "Normal", "active": "Monsoon active", "break": "Monsoon break", "depression": "Depression",
                "western_disturbance": "Western disturbance", "heat": "Heat"}
 HEAT_NOTE = ("Heat-wave guidance unavailable: forecasts are 00 UTC (05:30 IST); the heat rule needs an afternoon "

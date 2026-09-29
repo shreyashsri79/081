@@ -34,13 +34,14 @@ import xarray as xr
 
 from . import bundle as B
 from . import config as C
-from .export import EVENT_TEXT, HEAT_EVENT, diff_scale, to_display
+from .export import EVENT_TEXT, HEAT_EVENT, REGIME_TEXT, diff_scale, to_display
 from .weights import min_variance
 
 ECMWF_MODELS = {"ifs": "ifs", "aifs": "aifs-single"}             # our id -> ecmwf-opendata model name
-LIVE_MODELS = ["ifs", "aifs", "gfs"]
-PROXY = {"ifs": "hres", "aifs": "graphcast", "gfs": "hres"}
-PRIOR_INFLATION = {"gfs": 1.5}                                   # GFS trails IFS: start from 1.5x HRES error
+LIVE_MODELS = ["ifs", "aifs", "gfs", "ncum", "nepsg"]
+NCMRWF_MODELS = ["ncum", "nepsg"]                                # only when NCMRWF files are given (blend/adapters.py)
+PROXY = {"ifs": "hres", "aifs": "graphcast", "gfs": "hres", "ncum": "hres", "nepsg": "hres"}
+PRIOR_INFLATION = {"gfs": 1.5, "ncum": 1.5, "nepsg": 1.5}        # no training counterpart: start from 1.5x HRES error
 BIAS_FROM_PROXY = {"ifs"}                                        # others: no bias correction until verified
 VAR_IDS = {"t2m": C.T2M, "wind": C.WIND, "mslp": C.MSLP, "rain": C.RAIN}
 SET_OF = {"t2m": "S1", "wind": "S1", "mslp": "S1", "rain": "S2"}
@@ -188,6 +189,50 @@ def fetch_ecmwf(model: str, init: datetime.datetime, work: Path) -> xr.Dataset:
     return _assemble(one("2t"), one("10u"), one("10v"), one("msl"), tp)
 
 
+AFTERNOON_STEPS = [24 * d - 12 for d in C.LEAD_DAYS]             # 12 UTC (17:30 IST) of each lead's day
+
+
+def fetch_ecmwf_afternoon(model: str, init: datetime.datetime, work: Path) -> xr.DataArray:
+    """2 m temperature at 12 UTC of each lead's day, (lead, lat, lon) on the training grid, in K."""
+    from ecmwf.opendata import Client
+    path = work / f"{model}_{init:%Y%m%d}_t12.grib2"
+    if not path.exists():
+        Client(source="ecmwf", model=ECMWF_MODELS[model]).retrieve(
+            date=init, time=0, step=AFTERNOON_STEPS, param=["2t"], target=str(path) + ".tmp")
+        os.replace(str(path) + ".tmp", path)
+    ds = xr.open_dataset(path, engine="cfgrib", backend_kwargs={"filter_by_keys": {"shortName": "2t"}, "indexpath": ""})
+    da = ds[list(ds.data_vars)[0]]
+    hours = (da.step.values / np.timedelta64(1, "h")).astype(int)
+    da = da.assign_coords(step=hours).sel(step=AFTERNOON_STEPS)
+    da = da.drop_vars([c for c in da.coords if c not in da.dims])
+    return to_training_grid(da).rename(step="lead").assign_coords(lead=C.LEAD_DAYS)
+
+
+def fetch_gfs_afternoon(init: datetime.datetime, work: Path) -> xr.DataArray:
+    """GFS 2 m temperature at 12 UTC of each lead's day (NOMADS grib filter, 2 m TMP only)."""
+    import eccodes
+    url = GFS_URL.split("&var_APCP")[0] + "&var_TMP=on&lev_2_m_above_ground=on&subregion=" + GFS_URL.split("&subregion=")[1]
+    out, lat, lon = [], None, None
+    for h in AFTERNOON_STEPS:
+        path = work / f"gfs_{init:%Y%m%d}_f{h:03d}_t2m.grib2"
+        if not path.exists():
+            urllib.request.urlretrieve(url.format(d=init, h=h), str(path) + ".tmp")
+            os.replace(str(path) + ".tmp", path)
+            time.sleep(0.5)
+        with open(path, "rb") as f:
+            g = eccodes.codes_grib_new_from_file(f)
+            ni, nj = eccodes.codes_get(g, "Ni"), eccodes.codes_get(g, "Nj")
+            out.append(eccodes.codes_get_values(g).reshape(nj, ni))
+            lat = eccodes.codes_get_array(g, "distinctLatitudes")
+            lon = eccodes.codes_get_array(g, "distinctLongitudes")
+            if eccodes.codes_get(g, "jScansPositively") == 0:
+                lat = np.sort(lat)[::-1]
+            eccodes.codes_release(g)
+    da = xr.DataArray(np.stack(out), dims=("lead", "latitude", "longitude"),
+                      coords={"lead": C.LEAD_DAYS, "latitude": lat, "longitude": lon})
+    return to_training_grid(da)
+
+
 def fetch_gfs(init: datetime.datetime, work: Path) -> xr.Dataset:
     """NOAA GFS 0.25° from the NOMADS grib filter, India box only (~0.2 MB per step)."""
     import eccodes
@@ -221,6 +266,16 @@ def fetch_gfs(init: datetime.datetime, work: Path) -> xr.Dataset:
                             coords={"hours": hours, "latitude": lat, "longitude": lon})
 
     return _assemble(da("2t"), da("10u"), da("10v"), da("prmsl"), da("tp", 1 / 1000.0))
+
+
+def load_ncmrwf(path: str, init: datetime.datetime):
+    """NCUM / NEPS-G GRIB2 run (blend/adapters.py) -> (dataset on the training grid, afternoon 2 m T or None, info)."""
+    from .adapters import load
+    f, t12, info = load(path, init)
+    ds = _assemble(f["2t"], f["10u"], f["10v"], f["msl"], f["tp"])
+    if t12 is not None:
+        t12 = to_training_grid(t12).rename(hours="lead").assign_coords(lead=C.LEAD_DAYS)
+    return ds, t12, info
 
 
 def latest_gfs() -> datetime.datetime:
@@ -401,20 +456,88 @@ def _flat(a):
     return a.reshape(a.shape[:-2] + (len(LAT) * len(LON),)).astype(np.float32)
 
 
-def run(bundles: str, init: datetime.datetime | None = None, workdir: str = "live_work", model_file: Path = MODEL_FILE):
+def _afternoon_before(root: Path, init: datetime.datetime, members: list[str]):
+    """The afternoon before today's Day 1 = yesterday's live run, Day 1 afternoon: (model, lat, lon) °C, or None."""
+    rid = f"live-{init - datetime.timedelta(days=1):%Y%m%d}"
+    if rid not in B.list_runs(root):
+        return None
+    arr, x = B.read_arrays(root, rid), B.read_meta(root, rid).get("_x", {})
+    have = x.get("t12Models") or []
+    if "t12_t2m" not in arr or any(m not in have for m in members):
+        return None
+    t = arr["t12_t2m"][[have.index(m) for m in members], 0]                  # (model, cells)
+    return t.reshape(len(members), len(LAT), len(LON))
+
+
+def heat_events(root: Path, init: datetime.datetime, t12: dict, w: xr.DataArray, static) -> tuple[list, dict, list]:
+    """IMD heat-wave probabilities from the live models' 12 UTC temperatures (blend/heatwave.py).
+    Returns (events, arrays, models used). Empty when no afternoon field or no static file."""
+    from . import heatwave as HW
+    from .geo import india_mask
+    members = [m for m in w.model.values if m in t12]
+    if not members or static is None:
+        return [], {}, []
+    india = india_mask(LAT, LON)
+    cls = HW.cell_class(static, india)
+    t = np.stack([t12[m].transpose("lead", "latitude", "longitude").values for m in members]) - 273.15
+    normal = HW.normals_for(static, init, C.LEAD_DAYS)
+    before = _afternoon_before(root, init, members)
+    normal_before = HW.normals_for(static, init, [0])[0] if before is not None else None
+    hw, sv = HW.event_flags(t, normal, cls, before, normal_before)
+    ww = w.sel(model=members).transpose("model", "lead", "latitude", "longitude").values
+    day1 = ("Day 1 is checked against yesterday's afternoon from the previous live run." if before is not None
+            else "Day 1 is judged on its own afternoon: yesterday's live run is not kept or has no afternoon field.")
+    arrays, events = {"t12_t2m": _flat(t)}, []
+    for key, flags in (("heat", hw), ("heat_severe", sv)):
+        arrays[f"p_{key}"] = _flat(HW.probability(flags, ww, india))
+        events.append({"id": key, "var": "t2m", **HW.EVENTS[key], "available": True,
+                       "note": f"{HW.NOTE} Models: {', '.join(m.upper() for m in members)}. {day1}"})
+    return events, arrays, members
+
+
+def live_regime_of(root: Path, init: datetime.datetime, data: dict):
+    """(regime or None, z-scores, missing indices, note line) for the init day (blend/live_regime.py)."""
+    from . import live_regime as LR
+    clim = LR.load_clim()
+    if clim is None:
+        return None, {}, LR.COLS, ("Regime: season only; models/live_regime.nc (ERA5 index climatology) is missing: "
+                                   "python -m blend.live_regime build-clim.")
+    key = f"ana_{C.MSLP}"
+    ana = data["ifs"][key].values if "ifs" in data and key in data["ifs"] else None
+    regime, z, missing = LR.live_label(clim, LR.live_indices(root, init, LAT, LON, ana))
+    zs = ", ".join(f"{k} {v:+.1f}" for k, v in z.items() if v is not None) or "none"
+    note = (f"Regime of the init day: {REGIME_TEXT.get(regime, regime)} (same rules and ERA5 2003-2017 climatology as the "
+            f"hindcasts; live proxies: yesterday's Day-1 blended rain and afternoon temperature, today's IFS analysis "
+            f"pressure; z-scores {zs}). Weights do not depend on it: regime weights gave no held-out gain.")
+    if missing:
+        note += f" Not available yet: {', '.join(missing)} (needs earlier live runs), so those rules could not fire."
+    return regime, z, missing, note
+
+
+def run(bundles: str, init: datetime.datetime | None = None, workdir: str = "live_work", model_file: Path = MODEL_FILE,
+        ncmrwf: dict[str, str] | None = None):
+    """ncmrwf: {"ncum": path, "nepsg": path} to NCMRWF GRIB2 files of the same 00 UTC run (optional)."""
     t_start = time.time()
     root, work = Path(bundles), Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
     model = xr.load_dataset(model_file)
-    steps, data = [], {}
+    steps, data, t12 = [], {}, {}
+    ncmrwf = {m: p for m, p in (ncmrwf or {}).items() if p}
 
     ecmwf_init = init or min(latest_ecmwf(m) for m in ECMWF_MODELS)
     init = ecmwf_init
     log(f"init {init:%Y-%m-%d} 00 UTC")
     for m in LIVE_MODELS:
+        if m in NCMRWF_MODELS and m not in ncmrwf:
+            continue                                              # not public: used only when files are given
         t0 = time.time()
         try:
-            if m == "gfs":
+            if m in NCMRWF_MODELS:
+                data[m], afternoon, info = load_ncmrwf(ncmrwf[m], init)
+                if afternoon is not None:
+                    t12[m] = afternoon
+                log(f"{m}: {info['members']} member(s), {info['skipped']} message(s) from other runs skipped")
+            elif m == "gfs":
                 if init > latest_gfs():
                     raise RuntimeError(f"GFS {init:%Y-%m-%d} 00 UTC not complete on NOMADS yet")
                 data[m] = fetch_gfs(init, work)
@@ -429,6 +552,22 @@ def run(bundles: str, init: datetime.datetime | None = None, workdir: str = "liv
     if not data:
         raise SystemExit("no live model could be fetched")
 
+    # afternoon (12 UTC) 2 m temperature for the IMD heat-wave rule (NCMRWF files carry their own, if any)
+    for m in data:
+        if m in NCMRWF_MODELS:
+            continue
+        t0 = time.time()
+        try:
+            t12[m] = fetch_gfs_afternoon(init, work) if m == "gfs" else fetch_ecmwf_afternoon(m, init, work)
+            steps.append({"name": f"fetch {m} 12 UTC 2 m temperature (heat wave)", "status": "ok",
+                          "seconds": round(time.time() - t0, 2)})
+        except Exception as e:  # heat-wave guidance then leaves this model out
+            steps.append({"name": f"fetch {m} 12 UTC 2 m temperature (heat wave)", "status": "failed",
+                          "seconds": round(time.time() - t0, 2), "note": repr(e)[:200]})
+            log(f"{m} afternoon failed: {e!r}")
+    from .heatwave import load_static
+    static = load_static()
+
     # verify earlier live runs against today's IFS analysis, update the online statistics (B4)
     t0 = time.time()
     state, rows = load_state(), []
@@ -441,7 +580,9 @@ def run(bundles: str, init: datetime.datetime | None = None, workdir: str = "liv
                   "status": "ok" if "ifs" in data else "skipped", "seconds": round(time.time() - t0, 2)})
 
     season = C.SEASON_OF_MONTH[init.month]
+    regime, regime_z, regime_missing, regime_note = live_regime_of(root, init, data)
     arrays, models_by_var, vars_done, events, n_online = {}, {}, [], [], {}
+    heat, heat_models = [], []
     t0 = time.time()
     for vid, wb2 in VAR_IDS.items():
         if f"cov_{vid}" not in model:
@@ -454,26 +595,32 @@ def run(bundles: str, init: datetime.datetime | None = None, workdir: str = "liv
         for ev in extreme_probs(vid, fc, w, model):
             arrays[f"p_{ev['id']}"] = ev.pop("prob")
             events.append(ev)
+        if vid == "t2m":
+            heat, heat_arrays, heat_models = heat_events(root, init, t12, w, static)
+            arrays.update(heat_arrays)
         if vid == "wind":   # blended wind components for the particle layer
             uv = {c: sum(data[m][c].values * w.sel(model=m).values for m in fcs) for c in ("u10", "v10")}
             arrays["u10"], arrays["v10"] = _flat(uv["u10"]), _flat(uv["v10"])
     rung = "B4" if any(v > 0 for v in n_online.values()) else "B2c"
     steps.append({"name": f"blend ({rung}) + extreme probabilities", "status": "ok", "seconds": round(time.time() - t0, 2)})
 
+    no_twin = [m.upper().replace("NEPSG", "NEPS-G") for m in data if m in PRIOR_INFLATION]
     notes = [
         f"Live run: {', '.join(m.upper() for m in data)} 00 UTC forecasts, averaged onto the 1.5° training grid.",
         "Weights start from learned training skill (IFS <- HRES, AIFS <- GraphCast) and move toward each model's own "
         "live record as days are verified (B4, ~20-day memory; each model's mean error against the analysis is "
-        "removed first, so only its random error shapes the weights). GFS has no training counterpart: it starts from "
-        "HRES skill with 1.5x the error, so it carries almost no weight until its own verified days accumulate.",
+        "removed first, so only its random error shapes the weights)."
+        + (f" {' and '.join(no_twin)} {'has' if len(no_twin) == 1 else 'have'} no training counterpart: "
+           f"{'it starts' if len(no_twin) == 1 else 'each starts'} from HRES skill with 1.5x the error, so it carries "
+           "little weight until its own verified days accumulate." if no_twin else ""),
         f"Verified days behind today's weights (mean over cells and leads): "
         + ", ".join(f"{v} {n_online.get(v, 0):.1f}" for v in VERIFIED) + ". Rain has no live truth: training prior only.",
         "Live truth is the IFS analysis (step 0), which favours IFS; hindcast scorecards use ERA5 / CHIRPS.",
-        "Bias correction: IFS uses the HRES seasonal bias; AIFS and GFS are not bias-corrected.",
+        "Bias correction: IFS uses the HRES seasonal bias; the other models are not bias-corrected.",
         "Rain weights over the sea are equal (rain truth is land only, so there is no learned skill there).",
         "Extremes: each live model votes at its training counterpart's quantile threshold; calibrated on training "
         "years for the IFS/AIFS pair.",
-        "Regime: season only; the live regime label needs observed rain for the last 3 days.",
+        regime_note,
     ] + ver
     failed = [s for s in steps if s["status"] == "failed"]
     run_id = f"live-{init:%Y%m%d}"
@@ -482,14 +629,22 @@ def run(bundles: str, init: datetime.datetime | None = None, workdir: str = "liv
         "status": "partial" if failed else "ok", "models": list(data),
         "grid": {"lat0": float(LAT[0]), "lon0": float(LON[0]), "step": 1.5, "ny": len(LAT), "nx": len(LON)},
         "leads": [int(x) for x in C.LEAD_DAYS], "vars": vars_done, "modelsByVar": models_by_var,
-        "regime": {"season": season, "label": f"{season} (season only)", "basis": "init"},
+        "regime": {"season": season, "basis": "init",
+                   "label": REGIME_TEXT.get(regime, regime) if regime else f"{season} (season only)"},
         "rung": rung, "steps": steps, "provenance": "measured", "notes": notes,
-        "extremes": events + [{**HEAT_EVENT, "note": "Heat-wave guidance needs an afternoon (12 UTC) value."}],
+        "extremes": events + (heat or [{**HEAT_EVENT, "note": "Heat-wave guidance unavailable today: "
+                                        + ("no 12 UTC temperature could be fetched." if static is not None
+                                           else "models/live_static.nc (normals) is missing.")}]),
         "_x": {"sets": {v: SET_OF[v] for v in vars_done}, "proxy": PROXY, "k": float(K_ONLINE),
                "nSeason": {}, "nRegime": {}, "nOnline": {v: round(n, 1) for v, n in n_online.items()},
                "extremeCalibrated": bool(events), "extremeMethod":
                    "quantile-mapped weighted vote of the live models (training-counterpart thresholds), calibrated",
                "modelFile": model.attrs.get("source", ""),
+               "t12Models": heat_models,
+               "regime": regime, "regimeZ": regime_z, "regimeMissing": regime_missing,
+               "uncalibrated": [e["id"] for e in heat],
+               "eventMethod": {e["id"]: "IMD rule per model on 12 UTC 2 m temperature; probability = temperature "
+                                        "weights of the models meeting it (uncalibrated)" for e in heat},
                "created": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")},
     }
     B.write_run(root, meta, arrays)
@@ -543,12 +698,16 @@ def main(argv=None):
     r.add_argument("--bundles", default="bundles")
     r.add_argument("--date", help="init date YYYY-MM-DD (default: latest complete 00 UTC run)")
     r.add_argument("--work", default="live_work")
+    r.add_argument("--ncum", default=os.environ.get("BLEND_NCUM_DIR"),
+                   help="NCUM GRIB2 file or folder for the same 00 UTC run (env BLEND_NCUM_DIR)")
+    r.add_argument("--nepsg", default=os.environ.get("BLEND_NEPSG_DIR"),
+                   help="NEPS-G GRIB2 file or folder, all members (env BLEND_NEPSG_DIR)")
     a = ap.parse_args(argv)
     if a.cmd == "build-model":
         build_model(a.art, a.cache)
     else:
         init = datetime.datetime.strptime(a.date, "%Y-%m-%d") if a.date else None
-        run(a.bundles, init, a.work)
+        run(a.bundles, init, a.work, ncmrwf={"ncum": a.ncum, "nepsg": a.nepsg})
 
 
 if __name__ == "__main__":

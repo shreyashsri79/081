@@ -11,7 +11,7 @@ from pydantic.alias_generators import to_camel
 
 CONTRACT_VERSION = "1.1"
 
-ModelId = Literal["hres", "graphcast", "pangu", "fuxi", "gencast", "ifs", "aifs", "gfs"]
+ModelId = Literal["hres", "graphcast", "pangu", "fuxi", "gencast", "ifs", "aifs", "gfs", "ncum", "nepsg"]
 VarId = Literal["rain", "t2m", "wind", "mslp"]
 # Event ids come from each run (Run.extremes): "rain_p95", "wind_p99", "heat"... The synthetic source uses its own.
 ExtremeId = str

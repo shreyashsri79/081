@@ -31,6 +31,8 @@ const LIVE: { m: ModelId; counterpart: string; start: string }[] = [
   { m: 'ifs', counterpart: 'HRES (same system)', start: 'HRES skill and seasonal bias carry over; then online update (B4)' },
   { m: 'aifs', counterpart: 'GraphCast (AI, trained on ERA5)', start: 'GraphCast skill as prior; no bias correction; then online update (B4)' },
   { m: 'gfs', counterpart: 'none in WeatherBench 2', start: 'HRES skill with 1.5x error: near-zero weight until its own verified days accumulate' },
+  { m: 'ncum', counterpart: 'none (not public)', start: 'Only when NCMRWF shares GRIB2: HRES skill with 1.5x error, then its own verified days (B4)' },
+  { m: 'nepsg', counterpart: 'none (not public)', start: 'Only when NCMRWF shares GRIB2: members averaged, HRES skill with 1.5x error, then B4' },
 ]
 
 const TRUTH = [
@@ -174,9 +176,10 @@ export default function Data() {
 
       <section className="frame grid gap-6 bg-surface p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Head eyebrow="India's own models" title="NCUM and NEPS-G plug in through an adapter">
-          NCUM (12 km deterministic) and NEPS-G (23 members) are not public. The adapter reads their GRIB2 / NetCDF through the same
-          interface as every other source: ensemble mean from NEPS-G, spread as an optional uncertainty feature. It will be tested on
-          GFS GRIB2, the same format family.
+          NCUM (12 km deterministic) and NEPS-G (23 members) are not public. The adapter reads their GRIB2 by field name, whatever
+          the file layout, averages the NEPS-G members, and feeds the daily run like GFS:
+          <span className="mono text-[13px]"> python -m blend.live run --ncum DIR --nepsg DIR</span>. It is tested on generated GRIB2
+          files, not on NCMRWF output.
         </Head>
         <div className="flex flex-col justify-center gap-4">
           <div className="border-l-4 border-good bg-good-bg px-4 py-3">
