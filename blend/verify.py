@@ -68,10 +68,11 @@ def fit(fc: xr.DataArray, obs: xr.DataArray, alpha: float = C.ALPHA, k: float = 
         "w_B2": inverse_mse(fit_mse(fc_bc, obs, "all", k=k, size=size), alpha),
         "w_B2raw": inverse_mse(fit_mse(fc, obs, "all", k=k, size=size), alpha),
         "w_B3s": inverse_mse(fit_mse(fc_bc, obs, "season", k=k, size=size), alpha),
-        "w_B2c": min_variance(fit_cov(fc_bc, obs, "all", k=k, size=size)),
+        "cov_all": fit_cov(fc_bc, obs, "all", k=k, size=size),     # kept: the live run re-solves on model subsets
         "best_raw": raw_rmse.idxmin("model"),                     # (lead,) model name
         "best_bc": bc_rmse.idxmin("model"),
     }
+    p["w_B2c"] = min_variance(p["cov_all"])
     if has_regime:
         p["w_B3"] = inverse_mse(fit_mse(fc_bc, obs, "regime", k=k, size=size, keys=all_keys()), alpha)
         p["w_B3c"] = min_variance(fit_cov(fc_bc, obs, "regime", k=k, size=size, keys=all_keys()))

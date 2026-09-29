@@ -163,7 +163,7 @@ def train(set_name, models, years, variables, cache, art, clim_years, extremes=T
                      f"{b3['B3']:.3f} ({100 * (b3['B3'] / b3['B2'] - 1):+.2f} %)")
 
         p = V.fit(fc, obs)  # final fit on all years -> operational weights and maps
-        xr.Dataset({k: p[k] for k in ("w_B2", "w_B3s", "w_B3", "w_B2c", "w_B3c", "bias")}).to_netcdf(
+        xr.Dataset({k: p[k] for k in ("w_B2", "w_B3s", "w_B3", "w_B2c", "w_B3c", "bias", "cov_all")}).to_netcdf(
             f"{art}/weights_{set_name}_{tag}.nc")
         wa, wb = p["w_B3"].sel(lead=3, regime_key="JJAS:active"), p["w_B3"].sel(lead=3, regime_key="JJAS:break")
         P.weight_diff_maps(wa - wb, f"{var} · weight in monsoon ACTIVE minus BREAK spells · Day 3",

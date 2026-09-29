@@ -1,0 +1,5 @@
+# Daily live run (blend/live.py): the science stack plus ECMWF open data and GRIB decoding.
+-r requirements.txt
+ecmwf-opendata
+cfgrib
+eccodes

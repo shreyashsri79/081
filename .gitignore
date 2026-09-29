@@ -7,3 +7,4 @@ artifacts/
 .venv/
 bundles/**/*.tmp
 demo_work/
+live_work/
