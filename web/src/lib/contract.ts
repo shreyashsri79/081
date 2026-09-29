@@ -9,13 +9,16 @@
  *   GET /api/scorecard?run=              -> Scorecard
  *   GET /api/extremes?run=&type=&lead=   -> ExtremeMap
  *   GET /api/cell?run=&var=&lead=&i=&j=  -> CellReport
+ *   GET /api/meteogram?run=&i=&j=        -> Meteogram
+ *
+ * Server side: blend/api_models.py (pydantic, same fields, camelCase on the wire).
  */
 
 export type ModelId = 'hres' | 'graphcast' | 'pangu' | 'fuxi' | 'gencast' | 'ifs' | 'aifs' | 'gfs'
 export type VarId = 'rain' | 't2m' | 'wind' | 'mslp'
 export type ExtremeId = 'rain64' | 'rain115' | 'rain204' | 'heat' | 'wind15'
 export type Season = 'JF' | 'MAM' | 'JJAS' | 'OND'
-export type Rung = 'B0' | 'B1' | 'B2' | 'B3' | 'B4'
+export type Rung = 'B0' | 'B1' | 'B2' | 'B3s' | 'B3' | 'B4'
 
 /** Regular lat/lon grid; values are row-major, row 0 = southernmost. */
 export interface Grid {
@@ -63,6 +66,8 @@ export interface Run extends RunSummary {
   steps: RunStep[]
   /** 'synthetic' until the engine produces real output. Shown on every screen. */
   provenance: 'synthetic' | 'measured'
+  /** Honesty notes from the exporter: truth used, out-of-sample fold, rung per variable, gaps. */
+  notes?: string[]
 }
 
 export interface Field {
@@ -111,6 +116,12 @@ export interface ExtremeMap {
   prob: Float32Array
   /** State roll-up: max cell probability inside the state. */
   states: { name: string; pmax: number; pmean: number; cells: number }[]
+  /** false: this indicator cannot be produced for this run; `note` says why. */
+  available?: boolean
+  /** false until quantile mapping + isotonic calibration (Phase G). */
+  calibrated?: boolean
+  method?: string
+  note?: string
 }
 
 export interface CellReport {
