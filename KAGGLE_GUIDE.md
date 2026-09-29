@@ -173,3 +173,20 @@ BLEND_BUNDLES=bundles uvicorn blend.server:app --port 8081     # then: cd web &&
 ```
 
 The dashboard's bottom bar turns from **SYNTHETIC DATA** to **ENGINE CONNECTED**.
+
+## Live model file (for `blend/live.py`)
+
+After a training run, in the same notebook (or with that run's output attached as input), rebuild the file the
+daily live run uses, including the extreme-event tables:
+
+```
+!cd 081 && python -m blend.live build-model --art /kaggle/working/artifacts --cache /kaggle/working/cache && cp models/live_model.nc /kaggle/working/
+```
+
+With a previous run attached instead of re-training:
+
+```
+!rm -rf 081 && git clone -q https://github.com/shreyashsri79/081 && cd 081 && pip install -q gcsfs "zarr>=2.18,<3" &&  python -m blend.live build-model --art "$(dirname $(find /kaggle/input -type d -path '*artifacts/S1' | head -1))"    --cache "$(dirname $(find /kaggle/input -name 'truth_era5.nc' | head -1))" && cp models/live_model.nc /kaggle/working/
+```
+
+Download `live_model.nc`, put it in the repo's `models/`, commit. The next live run uses it.

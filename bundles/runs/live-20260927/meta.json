@@ -1,7 +1,7 @@
 {
- "id": "live-20260929",
+ "id": "live-20260927",
  "kind": "live",
- "init": "2026-09-29T00:00Z",
+ "init": "2026-09-27T00:00Z",
  "status": "ok",
  "models": [
   "ifs",
@@ -60,52 +60,52 @@
   "label": "JJAS (season only)",
   "basis": "init"
  },
- "rung": "B4",
+ "rung": "B2c",
  "steps": [
   {
    "name": "fetch ifs 00 UTC Day 1-10",
    "status": "ok",
-   "seconds": 5.4
+   "seconds": 5.05
   },
   {
    "name": "fetch aifs 00 UTC Day 1-10",
    "status": "ok",
-   "seconds": 4.88
+   "seconds": 4.31
   },
   {
    "name": "fetch gfs 00 UTC Day 1-10",
    "status": "ok",
-   "seconds": 2.56
+   "seconds": 2.4
   },
   {
-   "name": "verify 9 earlier forecasts against the IFS analysis; update online weights (B4)",
+   "name": "verify 3 earlier forecasts against the IFS analysis; update online weights (B4)",
    "status": "ok",
-   "seconds": 0.79
+   "seconds": 0.1
   },
   {
-   "name": "blend (B4) + extreme probabilities",
+   "name": "blend (B2c) + extreme probabilities",
    "status": "ok",
-   "seconds": 0.12
+   "seconds": 0.09
   },
   {
    "name": "write bundle",
    "status": "ok",
-   "seconds": 14.59
+   "seconds": 12.75
   }
  ],
  "provenance": "measured",
  "notes": [
   "Live run: IFS, AIFS, GFS 00 UTC forecasts, averaged onto the 1.5\u00b0 training grid.",
   "Weights start from learned training skill (IFS <- HRES, AIFS <- GraphCast) and move toward each model's own live record as days are verified (B4, ~20-day memory; each model's mean error against the analysis is removed first, so only its random error shapes the weights). GFS has no training counterpart: it starts from HRES skill with 1.5x the error, so it carries almost no weight until its own verified days accumulate.",
-  "Verified days behind today's weights (mean over cells and leads): t2m 0.6, wind 0.6, mslp 0.6. Rain has no live truth: training prior only.",
+  "Verified days behind today's weights (mean over cells and leads): t2m 0.0, wind 0.0, mslp 0.0. Rain has no live truth: training prior only.",
   "Live truth is the IFS analysis (step 0), which favours IFS; hindcast scorecards use ERA5 / CHIRPS.",
   "Bias correction: IFS uses the HRES seasonal bias; AIFS and GFS are not bias-corrected.",
   "Rain weights over the sea are equal (rain truth is land only, so there is no learned skill there).",
   "Extremes: each live model votes at its training counterpart's quantile threshold; calibrated on training years for the IFS/AIFS pair.",
   "Regime: season only; the live regime label needs observed rain for the last 3 days.",
-  "Live verification t2m (RMSE \u00b0C, Day 1, 3 day(s) vs IFS analysis): blend 0.95, ifs 0.70, aifs 0.97, gfs 1.70.",
-  "Live verification wind (RMSE m/s, Day 1, 3 day(s) vs IFS analysis): blend 0.58, ifs 0.61, aifs 0.52, gfs 1.06.",
-  "Live verification mslp (RMSE hPa, Day 1, 3 day(s) vs IFS analysis): blend 0.55, ifs 0.51, aifs 0.58, gfs 1.60."
+  "Live verification t2m (RMSE \u00b0C, Day 1, 1 day(s) vs IFS analysis): blend 1.02, ifs 0.65, gfs 1.49.",
+  "Live verification wind (RMSE m/s, Day 1, 1 day(s) vs IFS analysis): blend 0.78, ifs 0.86, gfs 1.21.",
+  "Live verification mslp (RMSE hPa, Day 1, 1 day(s) vs IFS analysis): blend 0.65, ifs 0.70, gfs 1.32."
  ],
  "extremes": [
   {
@@ -134,14 +134,14 @@
   "nSeason": {},
   "nRegime": {},
   "nOnline": {
-   "t2m": 0.6,
-   "wind": 0.6,
-   "mslp": 0.6,
+   "t2m": 0.0,
+   "wind": 0.0,
+   "mslp": 0.0,
    "rain": 0.0
   },
   "extremeCalibrated": false,
   "extremeMethod": "quantile-mapped weighted vote of the live models (training-counterpart thresholds), calibrated",
   "modelFile": "/kaggle/working/artifacts",
-  "created": "2026-09-29T15:15:02+00:00"
+  "created": "2026-09-29T15:14:32+00:00"
  }
 }

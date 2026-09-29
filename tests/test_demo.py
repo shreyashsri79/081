@@ -1,6 +1,8 @@
 """Demo bundles: the upstream cache layout (tagged per-variable files, CHIRPS land-only rain) through the real
 exporter, marked synthetic so the dashboard labels them."""
 
+import os
+
 import numpy as np
 import pytest
 
@@ -16,10 +18,10 @@ def demo_cache(tmp_path_factory):
 
 
 def test_cache_uses_run_all_layout(demo_cache):
-    files = [f.split("/")[-1] for f in fc_files(str(demo_cache), "hres", 2020)]
+    files = [os.path.basename(f) for f in fc_files(str(demo_cache), "hres", 2020)]
     assert files == ["fc_hres_2020.nc", "fc_hres_2020_rain.nc"]
     assert (demo_cache / "truth_chirps.nc").exists()
-    assert not any("rain" in f for f in [x.split("/")[-1] for x in fc_files(str(demo_cache), "pangu", 2020)])
+    assert not any("rain" in f for f in [os.path.basename(x) for x in fc_files(str(demo_cache), "pangu", 2020)])
     assert E.sets_for(2020, str(demo_cache))["rain"] == "S4"         # five models cached for 2020
 
 

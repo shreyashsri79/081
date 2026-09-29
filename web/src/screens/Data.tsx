@@ -28,14 +28,14 @@ const SETS = [
 ]
 
 const LIVE: { m: ModelId; counterpart: string; start: string }[] = [
-  { m: 'ifs', counterpart: 'HRES (same system)', start: 'HRES weights carry over' },
-  { m: 'aifs', counterpart: 'none in WeatherBench 2', start: 'Equal share, then online update' },
-  { m: 'gfs', counterpart: 'none in WeatherBench 2', start: 'Equal share, then online update' },
+  { m: 'ifs', counterpart: 'HRES (same system)', start: 'HRES skill and seasonal bias carry over; then online update (B4)' },
+  { m: 'aifs', counterpart: 'GraphCast (AI, trained on ERA5)', start: 'GraphCast skill as prior; no bias correction; then online update (B4)' },
+  { m: 'gfs', counterpart: 'none in WeatherBench 2', start: 'HRES skill with 1.5x error: near-zero weight until its own verified days accumulate' },
 ]
 
 const TRUTH = [
   { name: 'ERA5', use: 'Truth for T2m, wind, MSLP; regime labels', access: 'WeatherBench 2, 1959–2022', note: 'Rain is in metres: convert' },
-  { name: 'CHIRPS 2.0, 0.05° daily', use: 'Rain truth over land', access: 'Open HTTPS (UCSB CHC)', note: 'Verifying rain on ERA5 rewards models that look like ERA5' },
+  { name: 'CHIRPS 2.0, 0.25° daily', use: 'Rain truth over land', access: 'Open HTTPS (UCSB CHC)', note: 'Verifying rain on ERA5 rewards models that look like ERA5' },
   { name: 'IMD gridded rain, 0.25°', use: 'Better rain truth', access: 'Unconfirmed from our network', note: 'Try from the team network' },
 ]
 

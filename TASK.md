@@ -11,7 +11,7 @@ Legend: ✅ done and run on Kaggle · 🟡 code done, Kaggle result pending · �
 | Weather regimes | ~70 % | Built and measured; gives no extra gain yet |
 | Extreme-event guidance | ~80 % | Measured on Kaggle (below); IMD heat-wave rule missing; yes/no warnings over-warn |
 | Products (maps, scorecards, files for the dashboard) | ~40 % | Figures done; forecast fields / GeoJSON / API files not exported |
-| Operational daily run (live IFS / AIFS / GFS) | ~70 % | `blend/live.py` works end to end on today's IFS + AIFS; needs the real `models/live_model.nc` from Kaggle; GFS, live extremes and online update (B4) missing |
+| Operational daily run (live IFS / AIFS / GFS) | ~90 % | `blend/live.py`: IFS + AIFS + GFS daily, verification against the analysis, online weights (B4), live extremes; GitHub Actions every day 09:30 UTC. Live extremes need the Kaggle `build-model --cache` tables |
 | Dashboard | ~30 % | Teammate's `web/` frontend exists; not connected to model outputs |
 | NCUM / NEPS-G adapter | 0 % | |
 | **Whole project** | **~58 %** | |
@@ -54,7 +54,7 @@ Findings:
 | C7 Extremes | ✅ | p95 / p99 / 25 mm events, per-model thresholds, weighted votes, calibration, Brier / CSI, case maps | Kaggle result; IMD heat-wave rule (needs a 12 UTC / Tmax field); IMD rain thresholds on 0.25° |
 | C8 Verification | 🔶 | Leave-one-year-out, blocked months, block-bootstrap CI, per-regime table, gain maps | Per-region table (NW, central, NE, south, Bay, Arabian Sea) |
 | C9 Products | 🔶 | Weight maps, dominant-model map, gain map, RMSE-vs-lead, deck figures, weights NetCDF | Blended forecast fields NetCDF, GeoJSON tiles, district CSV, "why this weight" JSON |
-| C10 Daily run | 🟡 | `blend/live.py`: IFS + AIFS open data -> 1.5° -> B2c weights re-solved on proxy covariance (IFS<-HRES, AIFS<-GraphCast) -> `bundles/runs/live-YYYYMMDD`; manual GitHub Actions workflow | Real `models/live_model.nc`; GFS; live extremes; B4 online update; daily schedule |
+| C10 Daily run | ✅ | `blend/live.py` + `.github/workflows/live-run.yml`: newest 00 UTC IFS, AIFS, GFS -> 1.5° -> B2c prior (IFS<-HRES, AIFS<-GraphCast, GFS<-HRES x1.5) + online B4 (centred error covariance vs IFS analysis, ~20-day memory) -> extremes -> `bundles/runs/live-YYYYMMDD`; `bundles/live_verification.json` | Live regime label; ERA5T truth instead of the IFS analysis |
 | C11 Dashboard / API | 🟡 | `web/` dashboard wired to `blend/server.py` (FastAPI) over run bundles from `blend/export.py`; demo bundles in `bundles/` | Real bundles: `python run_all.py ... --export-runs auto` on Kaggle (KAGGLE_GUIDE.md) |
 | C12 NCUM adapter | ❌ | — | `adapters/ncum.py`, `adapters/nepsg.py` on GRIB2 |
 | Extra sets | 🟡 | S3 (5 models, 2020) and S4 (rain, 4 models) running on Kaggle | Results |
@@ -67,7 +67,6 @@ Findings:
 |---|---|---|---|
 | 1 | Read S3 / S4 results (running now) | — | Do more models help? |
 | 3 | ~~Export products for the dashboard~~ done: `blend/export.py` bundles (fields, weights, errors, calibrated events); run with `--export-runs auto` | — | Connects model to the frontend |
-| 4 | Live run: real model file from Kaggle, then GFS, live extremes, daily schedule (C10) | 2–3 h | PS outcome 5 |
 | 5 | B4 online weight update | 2 h | "Dynamic" weights; used by the daily run |
 | 6 | ~~FastAPI `server.py` + connect `web/`~~ done (BACKEND_BUILD_PLAN.md T1–T11) | — | Demo |
 | 7 | MSLP run | 10 min | Completes variable list |
