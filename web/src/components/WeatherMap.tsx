@@ -50,6 +50,9 @@ interface Props {
   home?: Home
   /** Opacity multiplier for field and wind outside India (1 = no emphasis). */
   outsideIndia?: number
+  /** Analytic wind (u, v) at (lon, lat, seconds) for decorative particles over the whole visible map, instead of
+   *  the gridded `wind`. Used only by the landing backdrop. */
+  flowField?: (lon: number, lat: number, t: number) => [number, number]
 }
 
 // ---------------------------------------------------------------- world
@@ -191,7 +194,7 @@ interface Drag { x: number; y: number; moved: boolean; pts: Map<number, [number,
 export default function WeatherMap(props: Props) {
   const {
     grid, layer, layerKey, smooth = true, wind, particles, isobars: iso, cities, cityValue, selected = null, onSelect, readout,
-    stamp, fly, children, className, rightInset = 0, basemap = true, fieldOpacity = 0.74, interactive = true, home, outsideIndia = 1,
+    stamp, fly, children, className, rightInset = 0, basemap = true, fieldOpacity = 0.74, interactive = true, home, outsideIndia = 1, flowField,
   } = props
   const box = useRef<HTMLDivElement>(null)
   const base = useRef<HTMLCanvasElement>(null)
@@ -489,9 +492,9 @@ export default function WeatherMap(props: Props) {
   // ---- wind particles (Ventusky / earth.nullschool style)
   // One endless loop per mounted map. Wind, view and settings are read from refs every frame, so a new day or a
   // new field changes how the particles move without restarting them. The loop sleeps while the map is off-screen.
-  const live = useRef({ view, size, wind, grid, basemap, outsideIndia, emphasis })
-  live.current = { view, size, wind, grid, basemap, outsideIndia, emphasis }
-  const animate = !!wind && !!particles && !reduce
+  const live = useRef({ view, size, wind, grid, basemap, outsideIndia, emphasis, flowField })
+  live.current = { view, size, wind, grid, basemap, outsideIndia, emphasis, flowField }
+  const animate = (!!wind || !!flowField) && !!particles && !reduce
   useEffect(() => {
     const c = flow.current
     if (!c) return
@@ -500,20 +503,27 @@ export default function WeatherMap(props: Props) {
     // Each particle keeps its last T positions (lon/lat) in a ring buffer; every frame the canvas is cleared and
     // the short trails redrawn, oldest segments faintest. No fade-by-multiplication, so no grey residue builds up,
     // and trails stay glued to the map while panning or zooming.
-    const T = 7
+    // Decorative flow (landing): many short comet dashes, like a live wind map. Data wind: fewer, longer trails.
+    const deco = !!live.current.flowField
+    const T = deco ? 5 : 7
+    const LIFE = deco ? 55 : 110
+    const SPEED = deco ? 0.2 : 0.34
     let N = 0, hx = new Float32Array(0), hy = new Float32Array(0), age = new Uint16Array(0)
     let head = 0, bounds = [0, 0, 0, 0], lastView: View | null = null, lastW = 0, raf = 0, visible = true
     const spawn = (k: number) => {
       const lo = bounds[0] + Math.random() * (bounds[1] - bounds[0]), la = bounds[2] + Math.random() * (bounds[3] - bounds[2])
       for (let t = 0; t < T; t++) { hx[k * T + t] = lo; hy[k * T + t] = la }
-      age[k] = Math.floor(Math.random() * 90)
+      age[k] = Math.floor(Math.random() * LIFE * 0.8)
     }
     const reseed = (v: View, w: number, h: number) => {
-      const lonA = Math.max(BOX.lon0, lonOf(-v.tx / v.s)), lonB = Math.min(BOX.lon1, lonOf((w - v.tx) / v.s))
-      const latB = Math.min(BOX.lat1, latOf(-v.ty / v.s)), latA = Math.max(BOX.lat0, latOf((h - v.ty) / v.s))
+      // gridded wind: particles live inside the data box; analytic flow: over the whole visible map
+      const free = !!live.current.flowField
+      const clip = (x: number, lo: number, hi: number) => (free ? x : Math.min(hi, Math.max(lo, x)))
+      const lonA = clip(lonOf(-v.tx / v.s), BOX.lon0, BOX.lon1), lonB = clip(lonOf((w - v.tx) / v.s), BOX.lon0, BOX.lon1)
+      const latB = clip(latOf(-v.ty / v.s), BOX.lat0, BOX.lat1), latA = clip(latOf((h - v.ty) / v.s), BOX.lat0, BOX.lat1)
       bounds = [lonA, Math.max(lonA, lonB), latA, Math.max(latA, latB)]
       const area = Math.max(0, lonB - lonA) * v.s * Math.max(0, M(latB) - M(latA)) * v.s
-      const n = Math.round(Math.min(2400, Math.max(400, area / 280)))
+      const n = Math.round(deco ? Math.min(4200, Math.max(600, area / 150)) : Math.min(2400, Math.max(400, area / 280)))
       if (n !== N) {
         const [ox, oy, og, on] = [hx, hy, age, N]
         hx = new Float32Array(n * T); hy = new Float32Array(n * T); age = new Uint16Array(n)
@@ -523,26 +533,55 @@ export default function WeatherMap(props: Props) {
       }
     }
     const buckets = 4
+    // Decorative flow is sampled onto a 0.5° lattice once a second and interpolated per particle:
+    // the field drifts slowly, and per-particle trig for thousands of particles costs a frame budget.
+    const LAT_STEP = 0.5
+    let lat0 = 0, lon0 = 0, nx = 0, ny = 0, lu = new Float32Array(0), lv = new Float32Array(0), builtAt = -1e9, builtFor = ''
+    const buildLattice = (fl: (lo: number, la: number, t: number) => [number, number], secs: number) => {
+      lon0 = Math.floor(bounds[0] - 2); lat0 = Math.floor(bounds[2] - 2)
+      nx = Math.ceil((bounds[1] + 2 - lon0) / LAT_STEP) + 1; ny = Math.ceil((bounds[3] + 2 - lat0) / LAT_STEP) + 1
+      if (lu.length !== nx * ny) { lu = new Float32Array(nx * ny); lv = new Float32Array(nx * ny) }
+      for (let i = 0; i < ny; i++)
+        for (let j = 0; j < nx; j++) {
+          const [u, v] = fl(lon0 + j * LAT_STEP, lat0 + i * LAT_STEP, secs)
+          lu[i * nx + j] = u; lv[i * nx + j] = v
+        }
+      builtAt = secs; builtFor = bounds.join()
+    }
+    const latticeAt = (lo: number, la: number): [number, number] => {
+      const gj = Math.min(nx - 1.001, Math.max(0, (lo - lon0) / LAT_STEP)), gi = Math.min(ny - 1.001, Math.max(0, (la - lat0) / LAT_STEP))
+      const j = gj | 0, i = gi | 0, tj = gj - j, ti = gi - i, k = i * nx + j
+      const w00 = (1 - ti) * (1 - tj), w01 = (1 - ti) * tj, w10 = ti * (1 - tj), w11 = ti * tj
+      return [lu[k] * w00 + lu[k + 1] * w01 + lu[k + nx] * w10 + lu[k + nx + 1] * w11,
+              lv[k] * w00 + lv[k + 1] * w01 + lv[k + nx] * w10 + lv[k + nx + 1] * w11]
+    }
     // 30 fps is plenty for flow lines and halves the raster cost; movement is scaled by elapsed time instead.
     const FRAME_MS = 1000 / 30
     let last = 0
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame)
-      const { view: v, size: sz, wind: wd, grid: g, basemap: bm, outsideIndia: oi, emphasis: em } = live.current
-      if (!visible || !v || !sz.w || !wd) return
+      const { view: v, size: sz, wind: wd, grid: g, basemap: bm, outsideIndia: oi, emphasis: em, flowField: fl } = live.current
+      if (!visible || !v || !sz.w || (!wd && !fl)) return
       if (now - last < FRAME_MS - 2) return
       const dt = last ? Math.min(3, (now - last) / (1000 / 60)) : 1
       last = now
       if (v !== lastView || sz.w !== lastW) { reseed(v, sz.w, sz.h); lastView = v; lastW = sz.w }
       // advance every particle one step into the next ring slot
-      const K = (0.34 * dt) / v.s // world units per 60 Hz frame per m/s: constant speed on screen
+      const K = (SPEED * dt) / v.s // world units per 60 Hz frame per m/s: constant speed on screen
       const next = (head + 1) % T
+      const secs = now / 1000
+      if (fl && (secs - builtAt > 1 || builtFor !== bounds.join())) buildLattice(fl, secs)
       for (let k = 0; k < N; k++) {
         const lo = hx[k * T + head], la = hy[k * T + head]
-        const gi = (la - g.lat0) / g.step, gj = (lo - g.lon0) / g.step
-        let ok = !(gi < 0 || gj < 0 || gi > g.ny - 1 || gj > g.nx - 1) && ++age[k] <= 110
-        let u = 0, vv = 0
-        if (ok) { u = bilinear(g, wd.u, gi, gj); vv = bilinear(g, wd.v, gi, gj); ok = Number.isFinite(u) && Number.isFinite(vv) }
+        let ok: boolean, u = 0, vv = 0
+        if (fl) {
+          ok = lo >= bounds[0] - 1 && lo <= bounds[1] + 1 && la >= bounds[2] - 1 && la <= bounds[3] + 1 && ++age[k] <= LIFE
+          if (ok) [u, vv] = latticeAt(lo, la)
+        } else {
+          const gi = (la - g.lat0) / g.step, gj = (lo - g.lon0) / g.step
+          ok = !(gi < 0 || gj < 0 || gi > g.ny - 1 || gj > g.nx - 1) && ++age[k] <= LIFE
+          if (ok) { u = bilinear(g, wd!.u, gi, gj); vv = bilinear(g, wd!.v, gi, gj); ok = Number.isFinite(u) && Number.isFinite(vv) }
+        }
         if (!ok) { spawn(k); age[k] = 0; hx[k * T + next] = hx[k * T + head]; hy[k * T + next] = hy[k * T + head]; continue }
         hx[k * T + next] = lo + u * K
         hy[k * T + next] = la + vv * K * Math.cos(la / DEG) // Mercator stretch
@@ -552,12 +591,12 @@ export default function WeatherMap(props: Props) {
       const r = Math.min(2, window.devicePixelRatio || 1)
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height)
       ctx.setTransform(r, 0, 0, r, 0, 0)
-      ctx.lineWidth = 1.1
+      ctx.lineWidth = deco ? 1.25 : 1.1
       const paths: Path2D[] = Array.from({ length: buckets * buckets }, () => new Path2D())
       for (let k = 0; k < N; k++) {
         const lo = hx[k * T + head], la = hy[k * T + head]
-        let a = bm ? feather(lo, la) : 1
-        if (oi < 1) {
+        let a = fl ? 1 : bm ? feather(lo, la) : 1
+        if (!fl && oi < 1) {
           const gi = Math.round((la - g.lat0) / g.step), gj = Math.round((lo - g.lon0) / g.step)
           if (gi >= 0 && gj >= 0 && gi < g.ny && gj < g.nx) a *= em[gi * g.nx + gj]
         }
@@ -574,7 +613,7 @@ export default function WeatherMap(props: Props) {
       }
       for (let pb = 0; pb < buckets; pb++)
         for (let ab = 0; ab < buckets; ab++) {
-          ctx.strokeStyle = `rgba(14,33,41,${(0.75 * ((pb + 1) / buckets) * (1 - ab / buckets)).toFixed(3)})`
+          ctx.strokeStyle = `rgba(14,33,41,${((deco ? 0.62 : 0.75) * ((pb + 1) / buckets) * (1 - ab / buckets)).toFixed(3)})`
           ctx.stroke(paths[pb * buckets + ab])
         }
     }

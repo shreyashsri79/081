@@ -14,6 +14,7 @@ import { BLEND_COLOUR, MODELS, VARS } from '@/lib/models'
 import { dominantPaint, dominantShare } from '@/lib/paint'
 import { cellColour, verdict } from '@/lib/score'
 import { cn, validDate } from '@/lib/utils'
+import { heroWind } from '@/lib/heroflow'
 
 /** The landing shows the five-model hindcast when it exists: it is the one with every model. */
 const DEFAULT_RUN = 'hindcast-20200715'
@@ -57,10 +58,9 @@ function Hero() {
   const [lead, setLead] = useState(1)
   const [playing, setPlaying] = useState(!reduce)
   const r = useRun(RUN).data
-  usePrefetchLeads(RUN, lead, { weights: HERO_VAR, wind: true })
+  usePrefetchLeads(RUN, lead, { weights: HERO_VAR })
   const wsQ = useWeights(RUN, HERO_VAR, lead).data
   const ws = wsQ?.var === HERO_VAR ? wsQ : undefined
-  const wind = useField(RUN, 'wind', lead).data
   const mask = useMemo(() => (r ? stateIndex(r.grid) : undefined), [r])
   const paint = useMemo(() => (ws ? dominantPaint(ws) : null), [ws])
   const share = useMemo(() => (ws ? dominantShare(ws, mask) : []), [ws, mask])
@@ -81,7 +81,7 @@ function Hero() {
             layer={paint ? { kind: 'paint', paint } : null}
             layerKey={`hero|${lead}`}
             smooth
-            wind={wind?.u ? { u: wind.u, v: wind.v! } : null}
+            flowField={heroWind}
             particles
             fieldOpacity={0.78}
             outsideIndia={0.22}
@@ -156,7 +156,7 @@ function Hero() {
           ))}
         </div>
         <p className="mt-2 text-[11.5px] leading-snug text-ink-2">
-          Most-trusted model per place for {VARS[HERO_VAR].name}, with the wind, Day 1 → 10.
+          Most-trusted model per place for {VARS[HERO_VAR].name}, Day 1 → 10. Wind streaks are illustrative.
         </p>
         <div className="mt-2 flex gap-1">
           {Array.from({ length: 10 }, (_, k) => k + 1).map((L) => (
