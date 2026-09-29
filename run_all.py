@@ -152,7 +152,7 @@ def train(set_name, models, years, variables, cache, art, clim_years):
                      f"{b3['B3']:.3f} ({100 * (b3['B3'] / b3['B2'] - 1):+.2f} %)")
 
         p = V.fit(fc, obs)  # final fit on all years -> operational weights and maps
-        xr.Dataset({k: p[k] for k in ("w_B2", "w_B3s", "w_B3", "bias")}).to_netcdf(
+        xr.Dataset({k: p[k] for k in ("w_B2", "w_B3s", "w_B3", "w_B2c", "w_B3c", "bias")}).to_netcdf(
             f"{art}/weights_{set_name}_{tag}.nc")
         wa, wb = p["w_B3"].sel(lead=3, regime_key="JJAS:active"), p["w_B3"].sel(lead=3, regime_key="JJAS:break")
         P.weight_diff_maps(wa - wb, f"{var} · weight in monsoon ACTIVE minus BREAK spells · Day 3",
@@ -175,7 +175,8 @@ def train(set_name, models, years, variables, cache, art, clim_years):
     rcard.to_csv(f"{art}/scorecard_by_regime_{set_name}.csv", index=False)
     print("\nDay-3 RMSE by init-day regime (B3 vs B2 = value of regime conditioning):")
     print(rcard.round(3).to_string(index=False))
-    lines.append(f"Set {set_name}: {', '.join(models)}; {mode} over {years}; 1.5 deg India box; 00 UTC; truth ERA5.")
+    lines.append(f"Set {set_name}: {', '.join(models)}; {mode} over {years}; 1.5 deg India box; 00 UTC; truth ERA5"
+                 + (", rain truth CHIRPS (land only)." if C.RAIN in variables else "."))
     open(f"{art}/headline.txt", "w", encoding="utf-8").write("\n".join(lines))
     try:
         commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
@@ -183,7 +184,7 @@ def train(set_name, models, years, variables, cache, art, clim_years):
         commit = "unknown"
     json.dump({"set": set_name, "models": models, "years": years, "variables": variables, "mode": mode,
                "code_commit": commit, "alpha": C.ALPHA, "k_shrink": C.K_SHRINK, "smooth": C.SMOOTH,
-               "n_boot": C.N_BOOT, "block_days": C.BLOCK_DAYS, "seed": C.SEED, "truth": C.ERA5,
+               "n_boot": C.N_BOOT, "block_days": C.BLOCK_DAYS, "seed": C.SEED, "truth": C.ERA5, "rain_truth": "CHIRPS 2.0 p25 daily, block mean to 1.5 deg, land only",
                "stores": {m: [u for u, _ in C.STORES[m]] for m in models},
                "clim_years": list(clim_years), "regime_boxes": C.REGIME_BOXES,
                "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")},

@@ -12,7 +12,8 @@ def fit_bias(fc: xr.DataArray, obs: xr.DataArray) -> xr.DataArray:
 
 
 def apply_bias(fc: xr.DataArray, bias: xr.DataArray) -> xr.DataArray:
-    return fc - bias.sel(season=fc.season).drop_vars("season")
+    out = fc - bias.sel(season=fc.season).drop_vars("season")
+    return out.clip(min=0) if fc.name == C.RAIN else out   # additive correction must not make rain negative
 
 
 def smooth(da: xr.DataArray, size: int = C.SMOOTH) -> xr.DataArray:
@@ -29,6 +30,20 @@ def _shrink(mse_child, n_child, mse_parent, k):
 def fit_mse(fc_bc: xr.DataArray, obs: xr.DataArray, level: str, k: float = C.K_SHRINK,
             size: int = C.SMOOTH, keys=None) -> xr.DataArray:
     """Mean squared error of (bias-corrected) forecasts, then smoothed over size x size cells.
+    See fit_table for the levels."""
+    return fit_table((fc_bc - obs) ** 2, level, k, size, keys)
+
+
+def fit_cov(fc_bc: xr.DataArray, obs: xr.DataArray, level: str, k: float = C.K_SHRINK,
+            size: int = C.SMOOTH, keys=None) -> xr.DataArray:
+    """Error second-moment matrix mean(e_i * e_j) between models, dims (m1, m2, ...).
+    The AI models share ERA5 training data, so their errors are correlated; inverse-MSE ignores that."""
+    e = fc_bc - obs
+    return fit_table(e.rename(model="m1") * e.rename(model="m2"), level, k, size, keys)
+
+
+def fit_table(se: xr.DataArray, level: str, k: float = C.K_SHRINK, size: int = C.SMOOTH, keys=None) -> xr.DataArray:
+    """Average `se` (any per-init quantity) over training inits at one level, with shrinkage and smoothing.
 
     level='all'    : per (model, lead, cell)                                   -> rung B2
     level='season' : per season, shrunk toward 'all'                           -> rung B3s
@@ -36,7 +51,6 @@ def fit_mse(fc_bc: xr.DataArray, obs: xr.DataArray, level: str, k: float = C.K_S
                      is shrunk toward 'all'. `keys` lists every key to return,
                      so keys unseen in training fall back to the season table.  -> rung B3
     """
-    se = (fc_bc - obs) ** 2
     mse_all = se.mean("init")
     if level == "all":
         return smooth(mse_all, size)

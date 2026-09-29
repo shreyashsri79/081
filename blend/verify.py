@@ -9,6 +9,8 @@ Rungs built here (MVP, spec §5.6):
   B2raw    B2 on raw forecasts, no bias correction      (does bias correction help?)
   B3s      B2 + season (shrunk toward B2)
   B3       B2 + season + weather regime of the init day (shrunk toward B3s)   -- the core claim
+  B2c      minimum-variance weights from the error covariance per cell x lead (handles correlated models)
+  B3c      B2c + season + regime
 """
 
 import numpy as np
@@ -16,11 +18,11 @@ import pandas as pd
 import xarray as xr
 
 from . import config as C
-from .skill import apply_bias, fit_bias, fit_mse
+from .skill import apply_bias, fit_bias, fit_cov, fit_mse
 from .regimes import all_keys
-from .weights import blend, inverse_mse
+from .weights import blend, inverse_mse, min_variance
 
-BLENDS = ["B1", "B2", "B2raw", "B3s", "B3"]
+BLENDS = ["B1", "B2", "B2raw", "B3s", "B3", "B2c", "B3c"]
 
 
 def lat_weights(da: xr.DataArray) -> xr.DataArray:
@@ -66,11 +68,13 @@ def fit(fc: xr.DataArray, obs: xr.DataArray, alpha: float = C.ALPHA, k: float = 
         "w_B2": inverse_mse(fit_mse(fc_bc, obs, "all", k=k, size=size), alpha),
         "w_B2raw": inverse_mse(fit_mse(fc, obs, "all", k=k, size=size), alpha),
         "w_B3s": inverse_mse(fit_mse(fc_bc, obs, "season", k=k, size=size), alpha),
+        "w_B2c": min_variance(fit_cov(fc_bc, obs, "all", k=k, size=size)),
         "best_raw": raw_rmse.idxmin("model"),                     # (lead,) model name
         "best_bc": bc_rmse.idxmin("model"),
     }
     if has_regime:
         p["w_B3"] = inverse_mse(fit_mse(fc_bc, obs, "regime", k=k, size=size, keys=all_keys()), alpha)
+        p["w_B3c"] = min_variance(fit_cov(fc_bc, obs, "regime", k=k, size=size, keys=all_keys()))
     return p
 
 
@@ -84,8 +88,10 @@ def predict(fc: xr.DataArray, p: dict) -> dict:
     out["B2"] = blend(fc_bc, p["w_B2"])
     out["B2raw"] = blend(fc, p["w_B2raw"])
     out["B3s"] = blend(fc_bc, p["w_B3s"])
+    out["B2c"] = blend(fc_bc, p["w_B2c"])
     if "w_B3" in p:
         out["B3"] = blend(fc_bc, p["w_B3"])
+        out["B3c"] = blend(fc_bc, p["w_B3c"])
     return out
 
 
