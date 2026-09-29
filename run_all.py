@@ -27,7 +27,9 @@ import xarray as xr
 from blend import config as C
 from blend import products as P
 from blend import verify as V
-from blend.cache import fc_path, load_forecasts, load_truth as load_truth_cache, truth_path
+from blend.cache import (chirps_path, fc_files, fc_path, load_forecasts, load_truth as load_truth_cache,
+                         truth_path, variables_in)
+from blend.chirps import load_rain_truth
 from blend.harmonise import prepare
 from blend.regimes import download_indices, label
 from blend.sources import load_forecast, load_truth
@@ -58,48 +60,59 @@ def seed_cache(cache):
             log(f"reused {os.path.basename(src)} from {os.path.dirname(src)}")
 
 
-def _complete(path, variables):
-    """File exists and holds every requested variable (an older run may have fewer)."""
-    if not os.path.exists(path):
-        return False
-    with xr.open_dataset(path) as ds:
-        return all(v in ds for v in variables)
+SHORT = {v: k for k, v in VAR_NAMES.items()}
+NO_RAIN = {"pangu", "aurora"}
 
 
 def download(models, years, variables, cache, jobs, max_inits, clim_years):
+    """Fetch only what is missing: each (model, year) gets the variables it lacks, in a new file."""
     seed_cache(cache)
-    tasks = [("truth", None), ("regimes", None)] + [(m, y) for m in models for y in years]
-
-    def done_already(t):
-        if t[0] == "regimes":
-            return os.path.exists(regimes_path(cache))
-        if t[0] == "truth":
-            return _complete(truth_path(cache), variables)
-        have = [v for v in variables if v != C.RAIN or t[0] != "pangu"]  # Pangu has no rain
-        return _complete(fc_path(cache, *t), have)
-
-    tasks = [t for t in tasks if not done_already(t)]
+    era5_vars = [v for v in variables if v != C.RAIN]   # rain truth comes from CHIRPS
+    tasks = []
+    missing = [v for v in era5_vars if v not in variables_in(glob.glob(os.path.join(cache, "truth_era5*.nc")))]
+    if missing:
+        tasks.append(("truth", missing))
+    if C.RAIN in variables and not os.path.exists(chirps_path(cache)):
+        tasks.append(("chirps", None))
+    if not os.path.exists(regimes_path(cache)):
+        tasks.append(("regimes", None))
+    for m in models:
+        want = [v for v in variables if not (v == C.RAIN and m in NO_RAIN)]
+        for y in years:
+            need = [v for v in want if v not in variables_in(fc_files(cache, m, y))]
+            if need:
+                tasks.append((m, y, need))
     log(f"download: {len(tasks)} files to fetch, {jobs} in parallel")
     workers = max(4, 32 // jobs)
+
+    def tag(vs):
+        return "-".join(SHORT[v] for v in vs)
 
     def one(task):
         t0 = time.time()
         if task[0] == "truth":
-            tr = xr.concat([load_truth(variables, f"{y}-01-01", f"{y + 1}-01-11", workers=workers) for y in years], "time")
+            vs = task[1]
+            tr = xr.concat([load_truth(vs, f"{y}-01-01", f"{y + 1}-01-11", workers=workers) for y in years], "time")
             _, first = np.unique(tr.time.values, return_index=True)
-            save(tr.isel(time=np.sort(first)), truth_path(cache))
-            return f"truth  days={tr.sizes['time']}  {time.time() - t0:.0f} s"
+            save(tr.isel(time=np.sort(first)), truth_path(cache, tag(vs)))
+            return f"ERA5 truth {vs}  days={tr.sizes['time']}  {time.time() - t0:.0f} s"
+        if task[0] == "chirps":
+            ref = xr.open_dataset(fc_files(cache, models[0], years[0])[0]) if fc_files(cache, models[0], years[0])                 else load_forecast(models[0], era5_vars or [C.T2M], [years[0]], max_inits=1)
+            rain = load_rain_truth(years, cache, ref.latitude.values, ref.longitude.values)
+            save(rain, chirps_path(cache))
+            shutil.rmtree(os.path.join(cache, "chirps_raw"), ignore_errors=True)  # keep the output small
+            return f"CHIRPS rain truth  days={rain.sizes['time']}  {time.time() - t0:.0f} s"
         if task[0] == "regimes":
             df = download_indices(f"{clim_years[0]}-01-01", "2023-01-10", workers=32)  # IO bound; biggest task
             df.to_csv(regimes_path(cache) + ".tmp")
             os.replace(regimes_path(cache) + ".tmp", regimes_path(cache))
             return f"regime indices  days={len(df)}  {time.time() - t0:.0f} s"
-        m, y = task
-        ds = load_forecast(m, variables, [y], max_inits=max_inits, workers=workers)
+        m, y, need = task
+        ds = load_forecast(m, need, [y], max_inits=max_inits, workers=workers)
         assert ds.sizes["lead"] == 10
         assert max_inits or ds.sizes["init"] >= 350, f"{m} {y}: only {ds.sizes['init']} inits"
-        save(ds, fc_path(cache, m, y))
-        return f"{m:9s} {y}  inits={ds.sizes['init']}  {time.time() - t0:.0f} s"
+        save(ds, fc_path(cache, m, y, tag(need) if fc_files(cache, m, y) else None))
+        return f"{m:9s} {y}  {tag(need)}  inits={ds.sizes['init']}  {time.time() - t0:.0f} s"
 
     with ThreadPoolExecutor(jobs) as pool:
         futures = {pool.submit(one, t): t for t in tasks}
@@ -196,7 +209,7 @@ def main():
 
     s = C.SETS[a.set]
     variables = [VAR_NAMES[v] for v in a.vars]
-    cache, art = os.path.join(a.out, "cache"), os.path.join(a.out, "artifacts")
+    cache, art = os.path.join(a.out, "cache"), os.path.join(a.out, "artifacts", a.set)  # one folder per set
     np.random.seed(C.SEED)
     log(f"set {a.set}: models {s['models']}, years {s['years']}, vars {variables}")
     if not a.skip_download:

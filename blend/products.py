@@ -67,7 +67,7 @@ def weight_diff_maps(dw: xr.DataArray, title: str, path: str):
 def dominant_map(w: xr.DataArray, title: str, path: str):
     from matplotlib.colors import ListedColormap
     models = list(w.model.values)
-    idx = w.argmax("model")
+    idx = w.fillna(-1).argmax("model").where(w.notnull().any("model"))  # rain truth is land only: ocean stays blank
     cmap = ListedColormap([MODEL_COLOURS.get(m, "#777") for m in models])
     fig, ax = plt.subplots(figsize=(5.5, 5), constrained_layout=True)
     ax.pcolormesh(w.longitude, w.latitude, idx, cmap=cmap, vmin=-0.5, vmax=len(models) - 0.5, shading="nearest")

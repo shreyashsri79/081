@@ -47,6 +47,7 @@ def gain_bars(card, path):
 
 
 def main(art):
+    """art: one set folder, e.g. artifacts/S1."""
     out = os.path.join(art, "deck")
     os.makedirs(out, exist_ok=True)
     card = pd.read_csv(os.path.join(art, [f for f in os.listdir(art) if f.startswith("scorecard_")][0]))
@@ -67,4 +68,4 @@ def main(art):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "/kaggle/working/artifacts")
+    main(sys.argv[1] if len(sys.argv) > 1 else "/kaggle/working/artifacts/S1")
