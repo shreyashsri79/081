@@ -3,6 +3,17 @@
 This guide gets you from zero to the slide-4 number and the weight maps. You need about **2–3 hours**, most of it
 waiting for downloads. Nothing here needs a GPU.
 
+## Fast path: one notebook, one cell
+
+New Kaggle notebook → Settings: Internet **On**, Accelerator **None** → paste into one cell → **Save Version → Save & Run All**:
+
+```
+!git clone -q https://github.com/shreyashsri79/081 && cd 081 && pip install -q gcsfs "zarr>=2.18,<3" && python run_all.py
+```
+
+It downloads 10 files in parallel, trains, verifies, and prints the slide-4 headline. Outputs land in
+`/kaggle/working/artifacts/`. The three-notebook route below does the same thing in separate steps.
+
 What runs where:
 
 ```mermaid
