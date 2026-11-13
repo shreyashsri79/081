@@ -3,3 +3,5 @@
 ecmwf-opendata
 cfgrib
 eccodes
+# blend.bundle imports CONTRACT_VERSION from blend.api_models, which needs pydantic.
+pydantic>=2.7
