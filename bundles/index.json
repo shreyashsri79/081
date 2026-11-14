@@ -1,7 +1,18 @@
 {
  "contractVersion": "1.1",
- "created": "2026-11-13T17:30:25+00:00",
+ "created": "2026-11-14T15:56:51+00:00",
  "runs": [
+  {
+   "id": "live-20261114",
+   "kind": "live",
+   "init": "2026-11-14T00:00Z",
+   "status": "ok",
+   "models": [
+    "ifs",
+    "aifs",
+    "gfs"
+   ]
+  },
   {
    "id": "live-20261113",
    "kind": "live",
