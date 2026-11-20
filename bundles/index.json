@@ -1,7 +1,18 @@
 {
  "contractVersion": "1.1",
- "created": "2026-11-19T18:28:36+00:00",
+ "created": "2026-11-20T17:56:37+00:00",
  "runs": [
+  {
+   "id": "live-20261120",
+   "kind": "live",
+   "init": "2026-11-20T00:00Z",
+   "status": "ok",
+   "models": [
+    "ifs",
+    "aifs",
+    "gfs"
+   ]
+  },
   {
    "id": "live-20261119",
    "kind": "live",
@@ -94,17 +105,6 @@
    "id": "live-20260928",
    "kind": "live",
    "init": "2026-09-28T00:00Z",
-   "status": "ok",
-   "models": [
-    "ifs",
-    "aifs",
-    "gfs"
-   ]
-  },
-  {
-   "id": "live-20260927",
-   "kind": "live",
-   "init": "2026-09-27T00:00Z",
    "status": "ok",
    "models": [
     "ifs",
